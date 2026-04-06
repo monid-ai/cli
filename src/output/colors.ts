@@ -13,8 +13,8 @@ export function info(message: string): void {
   console.log(`${chalk.blue('→')} ${message}`);
 }
 
-export function dim(message: string): string {
-  return chalk.dim(message);
+export function muted(message: string): string {
+  return chalk.gray(message);
 }
 
 export function statusBadge(status: RunStatus): string {

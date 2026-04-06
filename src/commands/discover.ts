@@ -1,6 +1,6 @@
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
-import { getActiveKey } from '../config/store.js';
+import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError } from '../utils/error.js';
 import { formatDiscoverResults } from '../output/format.js';
 import { startSpinner, succeedSpinner, stopSpinner } from '../output/spinner.js';
@@ -8,12 +8,13 @@ import { startSpinner, succeedSpinner, stopSpinner } from '../output/spinner.js'
 export const discoverCommand = new Command()
   .name('discover')
   .description('Search for data endpoints using natural language.')
-  .arguments('<query:string>')
+  .option('-q, --query <query:string>', 'Search query.', { required: true })
   .option('--limit <limit:number>', 'Maximum number of results (max 10).')
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ limit, json }, query) => {
+  .action(async ({ query, limit, json }) => {
     try {
-      const active = getActiveKey();
+      const config = new ConfigManager();
+      const active = config.getActiveKey();
       if (!active) {
         throw new MonidError(
           'AUTH_FAILED',

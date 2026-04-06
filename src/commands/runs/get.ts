@@ -1,6 +1,6 @@
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../../api/client.js';
-import { getActiveKey } from '../../config/store.js';
+import { ConfigManager } from '../../config/manager.js';
 import { handleError, MonidError } from '../../utils/error.js';
 import { formatRunDetail } from '../../output/format.js';
 import {
@@ -16,12 +16,13 @@ import type { RunDetailResponse } from '../../api/types.js';
 export const runsGetCommand = new Command()
   .name('get')
   .description('Get the status and result of a run.')
-  .arguments('<runId:string>')
+  .option('-r, --run-id <runId:string>', 'Run ID to look up.', { required: true })
   .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds).')
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ wait, json }, runId) => {
+  .action(async ({ runId, wait, json }) => {
     try {
-      const active = getActiveKey();
+      const config = new ConfigManager();
+      const active = config.getActiveKey();
       if (!active) {
         throw new MonidError(
           'AUTH_FAILED',

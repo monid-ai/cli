@@ -6,12 +6,13 @@ import { Table } from '@cliffy/table';
 export function renderTable(
   headers: string[],
   rows: string[][],
+  border: boolean = false
 ): void {
   const table = new Table()
     .header(headers)
     .body(rows)
-    .border()
-    .padding(1);
+    .border(border)
+    .padding(1) ;
 
   console.log(table.toString());
 }

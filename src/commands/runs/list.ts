@@ -1,6 +1,6 @@
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../../api/client.js';
-import { getActiveKey } from '../../config/store.js';
+import { ConfigManager } from '../../config/manager.js';
 import { handleError, MonidError } from '../../utils/error.js';
 import { formatRunsList } from '../../output/format.js';
 import { startSpinner, succeedSpinner, stopSpinner } from '../../output/spinner.js';
@@ -13,7 +13,8 @@ export const runsListCommand = new Command()
   .option('-j, --json', 'Output as JSON.')
   .action(async ({ limit, cursor, json }) => {
     try {
-      const active = getActiveKey();
+      const config = new ConfigManager();
+      const active = config.getActiveKey();
       if (!active) {
         throw new MonidError(
           'AUTH_FAILED',

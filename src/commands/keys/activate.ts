@@ -1,5 +1,5 @@
 import { Command } from '@cliffy/command';
-import { hasKey, setActiveKeyLabel } from '../../config/store.js';
+import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
 import { success } from '../../output/colors.js';
 
@@ -11,13 +11,15 @@ export const keysActivateCommand = new Command()
   })
   .action(async ({ label }) => {
     try {
-      if (!hasKey(label)) {
+      const config = new ConfigManager();
+
+      if (!config.hasKey(label)) {
         throw new Error(
           `No key found with label "${label}". Run "monid keys list" to see available keys.`,
         );
       }
 
-      setActiveKeyLabel(label);
+      config.activateKey(label);
       success(`Key "${label}" activated.`);
     } catch (err) {
       handleError(err);

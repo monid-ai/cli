@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
-import { getActiveKey } from '../config/store.js';
+import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError } from '../utils/error.js';
 import { formatRunDetail } from '../output/format.js';
 import {
@@ -27,10 +27,7 @@ export const runCommand = new Command()
   })
   .option('-i, --input <input:string>', 'Input JSON string.')
   .option('-f, --input-file <inputFile:string>', 'Read input from a JSON file.')
-  .option('-w, --wait [timeout:number]', 'Wait for completion (default 300s).', {
-    default: true,
-  })
-  .option('--no-wait', 'Fire and return immediately.')
+  .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds).')
   .option('-o, --output <output:string>', 'Write output to a file.')
   .option('-j, --json', 'Output as JSON.')
   .action(async (options) => {
@@ -39,7 +36,8 @@ export const runCommand = new Command()
     const inputFile = options.inputFile as string | undefined;
 
     try {
-      const active = getActiveKey();
+      const config = new ConfigManager();
+      const active = config.getActiveKey();
       if (!active) {
         throw new MonidError(
           'AUTH_FAILED',
@@ -74,19 +72,19 @@ export const runCommand = new Command()
       const runRes = await api.run(provider, endpoint, inputData);
 
       if (!wait) {
-        // No-wait mode: just return the run ID
+        // Default: fire and return the run ID
         if (json) {
           console.log(JSON.stringify(runRes, null, 2));
         } else {
           succeedSpinner(`Run started: ${runRes.runId}`);
           console.log(`Run ID: ${runRes.runId}`);
           console.log(`Status: ${statusBadge(runRes.status)}`);
-          console.log(`Poll with: monid runs get ${runRes.runId}`);
+          console.log(`Poll with: monid runs get -r ${runRes.runId}`);
         }
         return;
       }
 
-      // Wait mode: poll until done
+      // --wait mode: poll until done
       if (!json) {
         updateSpinner(`Running ${runRes.runId}...`);
       }

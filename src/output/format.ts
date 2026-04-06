@@ -13,53 +13,54 @@ import type { CredentialKey } from '../config/types.js';
 
 export function formatDiscoverResults(data: DiscoverResponse): void {
   if (data.results.length === 0) {
-    console.log(chalk.dim('No results found.'));
+    console.log(chalk.gray('No results found.'));
     return;
   }
 
-  const headers = ['Provider', 'Endpoint', 'Description', 'Price'];
+  const headers = ['Provider', 'Endpoint', 'Price', 'Description'];
   const rows = data.results.map((r) => [
-    r.providerName || r.provider,
+    r.provider,
     r.endpoint,
-    truncate(r.description, 50),
     formatPriceCompact(r.price),
+    truncate(r.description, 50),
   ]);
 
   renderTable(headers, rows);
-  console.log(chalk.dim(`${data.count} result(s) for "${data.query}"`));
 }
 
 // --- Inspect ---
 
 export function formatInspectResult(data: InspectResponse): void {
   console.log();
-  console.log(
-    chalk.bold(`${data.providerName || data.provider} / ${data.endpoint}`),
-  );
-  console.log(chalk.dim('─'.repeat(60)));
+
+  console.log(chalk.bold('Provider'));
+  console.log(`  ${data.providerName} (${data.provider})`);
   console.log();
-  console.log(data.description);
+
+  console.log(chalk.bold('Endpoint'));
+  console.log(`  ${data.endpoint}`);
 
   if (data.summary) {
     console.log();
-    console.log(chalk.dim(data.summary));
+    console.log(chalk.bold('Summary'));
+    console.log(`  ${data.summary}`);
   }
 
   console.log();
   console.log(chalk.bold('Pricing'));
   console.log(
-    `  Type:   ${data.price.type}`,
-  );
-  console.log(
+    `  Type:   ${data.price.type}\n` +
     `  Amount: ${formatPriceCompact(data.price)}`,
   );
   if (data.price.flatFee) {
     console.log(`  Flat fee: $${data.price.flatFee}`);
   }
+
   if (data.price.notes?.length) {
-    for (const note of data.price.notes) {
-      console.log(`  ${chalk.dim(note)}`);
-    }
+    console.log('  Notes:');
+    data.price.notes.forEach((n) => {
+      console.log(`    - ${n}`);
+    });
   }
 
   if (data.inputSchema) {
@@ -78,15 +79,15 @@ export function formatInspectResult(data: InspectResponse): void {
     console.log();
     console.log(chalk.bold('Notes'));
     for (const note of data.notes) {
-      console.log(`  ${note}`);
+      console.log(`  - ${note}`);
     }
   }
 
   if (data.usage) {
     console.log();
     console.log(chalk.bold('Usage'));
-    console.log(`  ${chalk.dim('API:')} ${data.usage.api}`);
-    console.log(`  ${chalk.dim('CLI:')} ${data.usage.cli}`);
+    console.log(`  ${chalk.gray('API:')} ${data.usage.api}`);
+    console.log(`  ${chalk.gray('CLI:')} ${data.usage.cli}`);
   }
 
   console.log();
@@ -97,7 +98,7 @@ export function formatInspectResult(data: InspectResponse): void {
 export function formatRunDetail(data: RunDetailResponse): void {
   console.log();
   console.log(chalk.bold('Run Details'));
-  console.log(chalk.dim('─'.repeat(40)));
+  console.log(chalk.gray('─'.repeat(40)));
   console.log(`  Run ID:   ${data.runId}`);
   console.log(`  Provider: ${data.providerName || data.provider}`);
   console.log(`  Endpoint: ${data.endpoint}`);
@@ -130,7 +131,7 @@ export function formatRunDetail(data: RunDetailResponse): void {
 
 export function formatRunsList(data: RunsListResponse): void {
   if (data.items.length === 0) {
-    console.log(chalk.dim('No runs found.'));
+    console.log(chalk.gray('No runs found.'));
     return;
   }
 
@@ -147,7 +148,7 @@ export function formatRunsList(data: RunsListResponse): void {
   renderTable(headers, rows);
 
   if (data.cursor) {
-    console.log(chalk.dim(`More results available. Use --cursor ${data.cursor}`));
+    console.log(chalk.gray(`More results available. Use --cursor ${data.cursor}`));
   }
 }
 
@@ -159,14 +160,14 @@ export function formatKeysList(
 ): void {
   const entries = Object.entries(keys);
   if (entries.length === 0) {
-    console.log(chalk.dim('No API keys configured. Run "monid keys add" to add one.'));
+    console.log(chalk.gray('No API keys configured. Run "monid keys add" to add one.'));
     return;
   }
 
-  const headers = ['Label', 'Prefix', 'Added At', 'Active'];
+  const headers = ['Label', 'Key', 'Added At'];
   const rows = entries.map(([label, cred]) => [
     label,
-    cred.prefix,
+    `${cred.prefix}*******`,
     formatDate(cred.added_at),
     label === activeLabel ? chalk.green('★') : '',
   ]);

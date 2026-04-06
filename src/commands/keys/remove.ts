@@ -1,5 +1,5 @@
 import { Command } from '@cliffy/command';
-import { removeKey, hasKey } from '../../config/store.js';
+import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
 import { success } from '../../output/colors.js';
 
@@ -13,14 +13,13 @@ export const keysRemoveCommand = new Command()
   .option('--force', 'Skip confirmation prompt.')
   .action(async ({ label, json, force }) => {
     try {
-      if (!hasKey(label)) {
+      const config = new ConfigManager();
+
+      if (!config.hasKey(label)) {
         throw new Error(`No key found with label "${label}".`);
       }
 
-      // TODO: Add interactive confirmation when --force is not set
-      // For now, always remove (confirmation requires @cliffy/prompt)
-
-      const removed = removeKey(label);
+      const removed = config.removeKey(label);
       if (!removed) {
         throw new Error(`Failed to remove key "${label}".`);
       }
