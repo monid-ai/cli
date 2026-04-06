@@ -1,0 +1,118 @@
+// --- Shared types ---
+
+export interface Price {
+  type: 'PER_CALL' | 'PER_RESULT';
+  amount: number;
+  flatFee?: number;
+  currency: string;
+  notes?: string[];
+}
+
+export interface Cost {
+  value: number;
+  currency: string;
+}
+
+export interface RunError {
+  source: 'provider' | 'platform';
+  message: string;
+}
+
+export type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+// --- Discover ---
+
+export interface DiscoverResult {
+  provider: string;
+  providerName: string;
+  endpoint: string;
+  description: string;
+  price: Price;
+}
+
+export interface DiscoverResponse {
+  results: DiscoverResult[];
+  query: string;
+  count: number;
+}
+
+// --- Inspect ---
+
+export interface InspectResponse {
+  id: string;
+  provider: string;
+  providerName: string;
+  endpoint: string;
+  description: string;
+  summary?: string;
+  inputSchema?: Record<string, unknown>;
+  price: Price;
+  docUrl?: string;
+  notes?: string[];
+  usage: {
+    api: string;
+    apiX402?: string;
+    cli: string;
+    cliX402?: string;
+  };
+}
+
+// --- Run ---
+
+export interface RunResponse {
+  runId: string;
+  provider: string;
+  endpoint: string;
+  status: RunStatus;
+  price: Price;
+  createdAt: string;
+}
+
+export interface RunDetailResponse {
+  runId: string;
+  caller: string;
+  provider: string;
+  providerName?: string;
+  endpoint: string;
+  status: RunStatus;
+  input?: Record<string, unknown>;
+  output?: Record<string, unknown>;
+  error?: RunError;
+  price: Price;
+  cost?: Cost | null;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+// --- Runs List ---
+
+export interface RunListItem {
+  runId: string;
+  caller: string;
+  provider: string;
+  providerName?: string;
+  endpoint: string;
+  status: RunStatus;
+  error?: RunError;
+  price: Price;
+  cost?: Cost | null;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface RunsListResponse {
+  items: RunListItem[];
+  cursor: string | null;
+}
+
+// --- API Error ---
+
+export interface ApiErrorResponse {
+  error?: {
+    message?: string;
+    code?: string;
+  };
+  message?: string;
+}
