@@ -1,6 +1,6 @@
 {
   "name": "@monid-ai/cli",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "description": "Monid CLI — discover, inspect, and run data endpoints",
   "type": "module",
   "bin": {
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monid-ai/monid-cli.git"
+    "url": "git+https://github.com/monid-ai/cli.git"
   },
   "dependencies": {
     "@cliffy/command": "npm:@jsr/cliffy__command",

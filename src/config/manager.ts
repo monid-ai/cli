@@ -1,12 +1,15 @@
 import Conf from 'conf';
 import yaml from 'yaml';
-import { VERSION } from './constants.js';
+import { VERSION, UPDATE_CHECK_INTERVAL_MS } from './constants.js';
 import { resolveConfigDir } from './paths.js';
+import { fetchLatestVersion, isNewerVersion } from '../utils/update-check.js';
+import type { UpdateInfo } from '../utils/update-check.js';
 import type { ConfigSchema, CredentialsSchema, CredentialKey } from './types.js';
 
 export class ConfigManager {
   private config: Conf<ConfigSchema>;
   private credentials: Conf<CredentialsSchema>;
+  private _updateCheckPromise: Promise<void> | null = null;
 
   constructor() {
     const configDir = resolveConfigDir();
@@ -38,6 +41,26 @@ export class ConfigManager {
         keys: {},
       },
     });
+
+    // Keep config version in sync with installed CLI version
+    this.config.set('version', VERSION);
+
+    // Start background update check if cache is stale
+    const lastCheck = this.config.get('last_update_check');
+    const isStale =
+      !lastCheck ||
+      Date.now() - new Date(lastCheck).getTime() > UPDATE_CHECK_INTERVAL_MS;
+
+    if (isStale) {
+      this._updateCheckPromise = fetchLatestVersion()
+        .then((version) => {
+          if (version) {
+            this.config.set('latest_version', version);
+          }
+          this.config.set('last_update_check', new Date().toISOString());
+        })
+        .catch(() => {});
+    }
   }
 
   // --- Key management ---
@@ -96,6 +119,25 @@ export class ConfigManager {
 
   getKeyCount(): number {
     return Object.keys(this.getAllKeys()).length;
+  }
+
+  // --- Update check ---
+
+  async getUpdateInfo(): Promise<UpdateInfo | null> {
+    // If a background fetch is in progress, wait for it to finish
+    if (this._updateCheckPromise) {
+      await this._updateCheckPromise;
+      this._updateCheckPromise = null;
+    }
+
+    const latestVersion = this.config.get('latest_version');
+    if (!latestVersion) return null;
+
+    if (isNewerVersion(VERSION, latestVersion)) {
+      return { currentVersion: VERSION, latestVersion };
+    }
+
+    return null;
   }
 
   // --- Paths ---

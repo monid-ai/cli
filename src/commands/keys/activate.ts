@@ -1,6 +1,7 @@
 import { Command } from '@cliffy/command';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
+import { printUpdateNotice } from '../../utils/update-check.js';
 import { success } from '../../output/colors.js';
 
 export const keysActivateCommand = new Command()
@@ -21,6 +22,9 @@ export const keysActivateCommand = new Command()
 
       config.activateKey(label);
       success(`Key "${label}" activated.`);
+
+      const updateInfo = await config.getUpdateInfo();
+      if (updateInfo) printUpdateNotice(updateInfo);
     } catch (err) {
       handleError(err);
     }

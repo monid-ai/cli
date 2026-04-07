@@ -3,6 +3,9 @@ import { join } from 'node:path';
 
 const outdir = './dist';
 
+// Read version from package.json to inject at build time
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
+
 const result = await Bun.build({
   entrypoints: ['./src/index.ts'],
   outdir,
@@ -10,6 +13,9 @@ const result = await Bun.build({
   format: 'esm',
   minify: false,
   sourcemap: 'none',
+  define: {
+    '__PKG_VERSION__': JSON.stringify(pkg.version),
+  },
 });
 
 if (!result.success) {

@@ -2,6 +2,7 @@ import { Command } from '@cliffy/command';
 import { validateApiKeyFormat, extractApiKeyPrefix, obfuscateApiKey } from '../../utils/keys.js';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
 import { success } from '../../output/colors.js';
 
 export const keysAddCommand = new Command()
@@ -39,13 +40,17 @@ export const keysAddCommand = new Command()
         config.activateKey(label);
       }
 
+      const updateInfo = await config.getUpdateInfo();
+
       if (json) {
-        console.log(JSON.stringify({}, null, 2));
+        const output = updateInfo ? applyUpdateNote({}, updateInfo) : {};
+        console.log(JSON.stringify(output, null, 2));
       } else {
         success(`Key "${label}" added successfully (${obfuscateApiKey(key)})`);
         if (config.getKeyCount() === 1) {
           success(`Key "${label}" activated.`);
         }
+        if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
       handleError(err, json);

@@ -2,6 +2,7 @@ import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError } from '../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
 import { formatInspectResult } from '../output/format.js';
 import { startSpinner, succeedSpinner, stopSpinner } from '../output/spinner.js';
 
@@ -33,12 +34,15 @@ export const inspectCommand = new Command()
       }
 
       const data = await api.inspect(provider, endpoint);
+      const updateInfo = await config.getUpdateInfo();
 
       if (json) {
-        console.log(JSON.stringify(data, null, 2));
+        const output = updateInfo ? applyUpdateNote(data, updateInfo) : data;
+        console.log(JSON.stringify(output, null, 2));
       } else {
         succeedSpinner(`Fetched details about ${endpoint} from ${provider}`);
         formatInspectResult(data);
+        if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
       stopSpinner();

@@ -4,6 +4,7 @@ import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError } from '../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
 import { formatRunDetail } from '../output/format.js';
 import {
   startSpinner,
@@ -73,13 +74,16 @@ export const runCommand = new Command()
 
       if (!wait) {
         // Default: fire and return the run ID
+        const updateInfo = await config.getUpdateInfo();
         if (json) {
-          console.log(JSON.stringify(runRes, null, 2));
+          const output = updateInfo ? applyUpdateNote(runRes, updateInfo) : runRes;
+          console.log(JSON.stringify(output, null, 2));
         } else {
           succeedSpinner(`Run started: ${runRes.runId}`);
           console.log(`Run ID: ${runRes.runId}`);
           console.log(`Status: ${statusBadge(runRes.status)}`);
           console.log(`Poll with: monid runs get -r ${runRes.runId}`);
+          if (updateInfo) printUpdateNotice(updateInfo);
         }
         return;
       }
@@ -98,8 +102,11 @@ export const runCommand = new Command()
         timeoutMs,
       );
 
+      const updateInfo = await config.getUpdateInfo();
+
       if (json) {
-        console.log(JSON.stringify(result, null, 2));
+        const out = updateInfo ? applyUpdateNote(result, updateInfo) : result;
+        console.log(JSON.stringify(out, null, 2));
       } else {
         if (result.status === 'COMPLETED') {
           succeedSpinner(`Run completed: ${result.runId}`);
@@ -116,6 +123,8 @@ export const runCommand = new Command()
           console.log(`Output written to ${output}`);
         }
       }
+
+      if (!json && updateInfo) printUpdateNotice(updateInfo);
     } catch (err) {
       stopSpinner();
       handleError(err, json);

@@ -2,6 +2,7 @@ import { Command } from '@cliffy/command';
 import { MonidAPI } from '../../api/client.js';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError, MonidError } from '../../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
 import { formatRunDetail } from '../../output/format.js';
 import {
   startSpinner,
@@ -56,8 +57,11 @@ export const runsGetCommand = new Command()
         result = await api.getRun(runId);
       }
 
+      const updateInfo = await config.getUpdateInfo();
+
       if (json) {
-        console.log(JSON.stringify(result, null, 2));
+        const output = updateInfo ? applyUpdateNote(result, updateInfo) : result;
+        console.log(JSON.stringify(output, null, 2));
       } else {
         if (result.status === 'COMPLETED') {
           succeedSpinner(`Run completed: ${result.runId}`);
@@ -67,6 +71,7 @@ export const runsGetCommand = new Command()
           succeedSpinner(`Run status: ${result.status}`);
         }
         formatRunDetail(result);
+        if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
       stopSpinner();

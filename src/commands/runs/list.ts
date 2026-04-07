@@ -2,6 +2,7 @@ import { Command } from '@cliffy/command';
 import { MonidAPI } from '../../api/client.js';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError, MonidError } from '../../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
 import { formatRunsList } from '../../output/format.js';
 import { startSpinner, succeedSpinner, stopSpinner } from '../../output/spinner.js';
 
@@ -29,12 +30,15 @@ export const runsListCommand = new Command()
       }
 
       const data = await api.listRuns(limit, cursor);
+      const updateInfo = await config.getUpdateInfo();
 
       if (json) {
-        console.log(JSON.stringify(data, null, 2));
+        const output = updateInfo ? applyUpdateNote(data, updateInfo) : data;
+        console.log(JSON.stringify(output, null, 2));
       } else {
         succeedSpinner(`Found ${data.items.length} run(s)`);
         formatRunsList(data);
+        if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
       stopSpinner();

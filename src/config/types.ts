@@ -1,6 +1,8 @@
 export interface ConfigSchema {
   version: string;
   active_key: string;
+  last_update_check?: string;
+  latest_version?: string;
 }
 
 export interface CredentialKey {

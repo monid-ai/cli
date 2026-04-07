@@ -2,6 +2,7 @@ import { Command } from '@cliffy/command';
 import { Confirm } from '@cliffy/prompt';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
 import { success } from '../../output/colors.js';
 
 export const keysRemoveCommand = new Command()
@@ -42,10 +43,14 @@ export const keysRemoveCommand = new Command()
         throw new Error(`Failed to remove key "${label}".`);
       }
 
+      const updateInfo = await config.getUpdateInfo();
+
       if (json) {
-        console.log(JSON.stringify({}, null, 2));
+        const output = updateInfo ? applyUpdateNote({}, updateInfo) : {};
+        console.log(JSON.stringify(output, null, 2));
       } else {
         success(`Key "${label}" removed.`);
+        if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
       handleError(err, json);
