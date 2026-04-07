@@ -1,4 +1,5 @@
 import { Command } from '@cliffy/command';
+import { Confirm } from '@cliffy/prompt';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
 import { success } from '../../output/colors.js';
@@ -10,13 +11,30 @@ export const keysRemoveCommand = new Command()
     required: true,
   })
   .option('-j, --json', 'Output as JSON.')
-  .option('--force', 'Skip confirmation prompt.')
+  .option('-f, --force', 'Skip confirmation prompt.')
   .action(async ({ label, json, force }) => {
     try {
       const config = new ConfigManager();
 
       if (!config.hasKey(label)) {
         throw new Error(`No key found with label "${label}".`);
+      }
+
+      if (!force) {
+        if (json) {
+          throw new Error(
+            'Cannot prompt for confirmation in --json mode. Use --force to skip.',
+          );
+        }
+
+        const confirmed = await Confirm.prompt(
+          `Remove key "${label}"?`,
+        );
+
+        if (!confirmed) {
+          console.log('Cancelled.');
+          process.exit(0);
+        }
       }
 
       const removed = config.removeKey(label);

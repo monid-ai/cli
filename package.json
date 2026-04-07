@@ -1,10 +1,13 @@
 {
-  "name": "monid",
-  "version": "0.0.5",
+  "name": "@monid-ai/cli",
+  "version": "0.0.1",
   "description": "Monid CLI — discover, inspect, and run data endpoints",
   "type": "module",
   "bin": {
     "monid": "./dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=20"
@@ -34,6 +37,7 @@
   },
   "dependencies": {
     "@cliffy/command": "npm:@jsr/cliffy__command",
+    "@cliffy/prompt": "npm:@jsr/cliffy__prompt",
     "@cliffy/table": "npm:@jsr/cliffy__table",
     "chalk": "^5.6.2",
     "conf": "^15.1.0",

@@ -1,0 +1,74 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Dev: publish @monid-ai/cli@dev on every push to main
+  # ──────────────────────────────────────────────
+  publish-dev:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: bun install
+      - run: bun test
+      - run: bun run build
+
+      - name: Set dev version
+        run: |
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          LATEST=$(npm view @monid-ai/cli version 2>/dev/null || echo "0.0.0")
+          npm version "${LATEST}-dev.${TIMESTAMP}" --no-git-tag-version
+
+      - run: npm publish --tag dev --access public
+
+  # ──────────────────────────────────────────────
+  # Prod: publish @monid-ai/cli@latest on GitHub Release
+  # Sets version from release tag (e.g., v0.1.0 → 0.1.0)
+  # ──────────────────────────────────────────────
+  publish-prod:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: bun install
+      - run: bun test
+      - run: bun run build
+
+      - name: Set release version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          npm version "${TAG}" --no-git-tag-version
+
+      - run: npm publish --access public

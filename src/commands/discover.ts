@@ -9,7 +9,7 @@ export const discoverCommand = new Command()
   .name('discover')
   .description('Search for data endpoints using natural language.')
   .option('-q, --query <query:string>', 'Search query.', { required: true })
-  .option('--limit <limit:number>', 'Maximum number of results (max 10).')
+  .option('-l, --limit <limit:number>', 'Maximum number of results (max 10).')
   .option('-j, --json', 'Output as JSON.')
   .action(async ({ query, limit, json }) => {
     try {

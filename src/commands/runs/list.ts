@@ -8,7 +8,7 @@ import { startSpinner, succeedSpinner, stopSpinner } from '../../output/spinner.
 export const runsListCommand = new Command()
   .name('list')
   .description('List recent runs.')
-  .option('--limit <limit:number>', 'Maximum number of runs to list.')
+  .option('-l, --limit <limit:number>', 'Maximum number of runs to list.')
   .option('--cursor <cursor:string>', 'Pagination cursor.')
   .option('-j, --json', 'Output as JSON.')
   .action(async ({ limit, cursor, json }) => {
