@@ -4,7 +4,7 @@
   "description": "Monid CLI — discover, inspect, and run data endpoints",
   "type": "module",
   "bin": {
-    "monid": "./dist/index.js"
+    "monid": "dist/index.js"
   },
   "publishConfig": {
     "access": "public"
