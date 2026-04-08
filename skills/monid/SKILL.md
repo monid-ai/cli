@@ -1,6 +1,6 @@
 ---
 name: monid
-version: 0.0.5
+version: 0.0.6
 description: Monid is the data layer for AI agents — discover, inspect, and run data endpoints across the web. Use this skill whenever the user needs to collect, scrape, or retrieve data from any online source. Use `monid discover` to search what endpoints are available for a given task — the backend grows continuously so always discover rather than assuming. Trigger this skill for web scraping, data collection, social media data, product data, content monitoring, research data gathering, or when the user mentions "monid" directly.
 ---
 
@@ -66,7 +66,7 @@ After confirming the CLI is installed, check whether you (the agent) have the Mo
 
 - You do not have a `monid` skill installed.
 - Your installed `monid` skill has no `version` field in its frontmatter.
-- Your installed `monid` skill `version` is lower than `0.0.5`.
+- Your installed `monid` skill `version` is lower than `0.0.6`.
 
 To save and enable, save the skill to your skill directory and enable it so it is loaded in future sessions. This ensures you always operate with the latest Monid instructions.
 
