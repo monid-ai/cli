@@ -107,7 +107,7 @@ Most commands accept `-j/--json` for machine-readable JSON output.
 
 ## Workflow
 
-The standard workflow is: discover → inspect → run → retrieve.
+The standard workflow is: discover → inspect → run → poll.
 
 ```bash
 # 1. Discover endpoints for your data need
@@ -116,23 +116,35 @@ monid discover -q "twitter posts"
 # 2. Inspect the endpoint to learn its inputSchema
 monid inspect -p apify -e /apidojo/tweet-scraper
 
-# 3. Run with --wait to block until completion, save output to file
+# 3. Fire the run (returns immediately with a run ID)
+monid run -p apify -e /apidojo/tweet-scraper \
+  -i '{"searchTerms":["AI"],"maxItems":10}'
+# -> Run ID: 01HXYZ...
+
+# 4. Poll for completion
+monid runs get -r 01HXYZ...
+# -> status: RUNNING
+
+# Keep polling every 5-10 seconds until COMPLETED
+monid runs get -r 01HXYZ... -o tweets.json
+# -> status: COMPLETED
+```
+
+**Using `--wait`:**
+
+`--wait` blocks until completion (1-120 seconds) with built-in exponential backoff:
+
+```bash
+# This will block for the entire duration
 monid run -p apify -e /apidojo/tweet-scraper \
   -i '{"searchTerms":["AI"],"maxItems":10}' \
   -w -o tweets.json
 ```
 
-If you don't use `--wait`, the CLI returns a run ID immediately. Poll with `monid runs get`:
-
-```bash
-# Fire without waiting
-monid run -p apify -e /apidojo/tweet-scraper \
-  -i '{"searchTerms":["AI"],"maxItems":10}'
-# -> Run ID: 01HXYZ...
-
-# Check status later
-monid runs get -r 01HXYZ...
-```
+**When to use `--wait`:**
+- Async/background tasks where blocking is acceptable
+- You can set a timeout: `-w 30` (wait max 30 seconds)
+- Be aware: runs can take 1-120 seconds, so this may block the conversation or hit runtime timeouts
 
 ---
 
@@ -147,12 +159,18 @@ monid discover -q "twitter posts"
 # Inspect to learn the input parameters
 monid inspect -p apify -e /apidojo/tweet-scraper
 
-# Run with a single search term, small limit, wait for results
+# Run with a single search term, small limit
 monid run -p apify -e /apidojo/tweet-scraper \
-  -i '{"searchTerms":["AI agents"],"maxItems":10}' \
-  -w -o ai_tweets.json
+  -i '{"searchTerms":["AI agents"],"maxItems":10}'
+# -> Run ID: 01HXYZ...
 
-# Results are saved to ai_tweets.json
+# Poll for completion (~10-30 seconds for small requests)
+monid runs get -r 01HXYZ...
+# -> status: RUNNING
+
+# Check again after 10 seconds, save when complete
+monid runs get -r 01HXYZ... -o ai_tweets.json
+# -> status: COMPLETED
 ```
 
 ### Flow 2: Compare AI discussion across platforms
@@ -170,14 +188,18 @@ monid discover -q "linkedin posts"
 monid inspect -p apify -e /apidojo/tweet-scraper
 monid inspect -p apify -e /harvestapi/linkedin-post-search
 
-# Run both (use --wait on each, or fire both and poll)
+# Fire both runs
 monid run -p apify -e /apidojo/tweet-scraper \
-  -i '{"searchTerms":["AI"],"maxItems":20}' \
-  -w -o twitter_ai.json
+  -i '{"searchTerms":["AI"],"maxItems":20}'
+# -> Run ID: 01HTWIT...
 
 monid run -p apify -e /harvestapi/linkedin-post-search \
-  -i '{"keywords":"AI","maxResults":20}' \
-  -w -o linkedin_ai.json
+  -i '{"keywords":"AI","maxResults":20}'
+# -> Run ID: 01HLINK...
+
+# Poll both runs independently
+monid runs get -r 01HTWIT... -o twitter_ai.json
+monid runs get -r 01HLINK... -o linkedin_ai.json
 
 # Now analyze and compare the two result files
 ```
@@ -239,9 +261,18 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 
 ## Polling Best Practices
 
-- **For sequential agents** (most AI agents like Claude Code, Cursor), use `--wait` on `monid run`. It blocks until completion with built-in exponential backoff — no need to manage poll timing yourself.
-- **For concurrent agents** that can do other work while waiting, fire without `--wait` and poll with `monid runs get -r <runId>` every 5-10 seconds.
-- Always use `--output` / `-o` to save results to a file once the run completes.
+**Default approach (recommended for interactive use):**
+- Fire the run without `--wait` — returns immediately with a run ID
+- Poll with `monid runs get -r <runId>` every 5-10 seconds
+- This keeps the conversation responsive and avoids blocking for 1-120 seconds
+
+**When to use `--wait`:**
+- **Async/background tasks** where blocking is acceptable (e.g., scheduled jobs, non-interactive scripts)
+- **Set a timeout** if needed: `-w 30` waits max 30 seconds, then returns current status
+- **Be aware:** Runs can take 1-120 seconds. Using `--wait` without a timeout can block the conversation or hit agent runtime limits.
+
+**Saving output:**
+- Always use `-o <file>` to save results once the run completes (works with both approaches)
 
 ---
 
@@ -261,7 +292,7 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 
 1. **Always inspect before running** — never guess input parameters. The inputSchema from `monid inspect` is the source of truth.
 2. **Keep discover queries short and focused** — noun phrases work best ("twitter posts", "amazon product prices"). Break complex requests into smaller unit pieces.
-3. **Use `--wait` for sequential execution** — it handles backoff automatically and avoids busy-looping. Manual polling is better only when the agent can do useful work in between.
-4. **Always use `--output`** to save results to a file.
+3. **Prefer fire-and-poll for interactive use** — fire the run without `--wait`, then poll with `monid runs get` every 5-10 seconds. This keeps the conversation responsive. Use `--wait` only for async/background tasks where blocking 1-120 seconds is acceptable.
+4. **Always use `-o <file>`** to save results to a file once the run completes.
 5. **Start with conservative limits** — small `maxItems`/`maxResults` values (5-10) on first calls. The cost warning above explains why.
 6. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
