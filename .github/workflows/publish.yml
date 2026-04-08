@@ -76,3 +76,8 @@ jobs:
           npm version "${TAG}" --no-git-tag-version
 
       - run: npm publish --access public
+
+      - name: Tag as next
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          npm dist-tag add @monid-ai/cli@${TAG} next
