@@ -18,7 +18,13 @@ export interface RunError {
   message: string;
 }
 
-export type RunStatus = 'RUNNING' | 'COMPLETED' | 'FAILED';
+export interface ProviderResponse {
+  httpStatus: number;
+  data?: Record<string, unknown>;
+  error?: Record<string, unknown>;
+}
+
+export type RunStatus = 'READY' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
 // --- Discover ---
 
@@ -66,6 +72,7 @@ export interface RunResponse {
   status: RunStatus;
   price: Price;
   createdAt: string;
+  providerResponse?: ProviderResponse;
 }
 
 export interface RunDetailResponse {
@@ -78,6 +85,7 @@ export interface RunDetailResponse {
   input?: Record<string, unknown>;
   output?: Record<string, unknown>;
   error?: RunError;
+  providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
   createdAt: string;
@@ -95,6 +103,7 @@ export interface RunListItem {
   endpoint: string;
   status: RunStatus;
   error?: RunError;
+  providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
   createdAt: string;

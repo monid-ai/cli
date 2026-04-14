@@ -5,7 +5,7 @@ import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError } from '../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
-import { formatRunDetail } from '../output/format.js';
+import { formatRunDetail, resolveOutput } from '../output/format.js';
 import {
   startSpinner,
   succeedSpinner,
@@ -72,8 +72,11 @@ export const runCommand = new Command()
       // Fire the run
       const runRes = await api.run(provider, endpoint, inputData);
 
-      if (!wait) {
-        // Default: fire and return the run ID
+      // Check if the run completed synchronously
+      const isTerminal = runRes.status === 'COMPLETED' || runRes.status === 'FAILED';
+
+      if (!wait && !isTerminal) {
+        // Default: fire and return the run ID (only if not already complete)
         const updateInfo = await config.getUpdateInfo();
         if (json) {
           const output = updateInfo ? applyUpdateNote(runRes, updateInfo) : runRes;
@@ -88,19 +91,27 @@ export const runCommand = new Command()
         return;
       }
 
-      // --wait mode: poll until done
-      if (!json) {
-        updateSpinner(`Running ${runRes.runId}...`);
+      // Get the final result - either the sync response or poll for it
+      let result: RunDetailResponse;
+      
+      if (isTerminal) {
+        // Already complete - treat runRes as the full detail response
+        result = runRes as RunDetailResponse;
+      } else {
+        // --wait mode: poll until done
+        if (!json) {
+          updateSpinner(`Running ${runRes.runId}...`);
+        }
+
+        const timeoutMs =
+          typeof wait === 'number' ? wait * 1000 : 300_000;
+
+        result = await pollUntilDone<RunDetailResponse>(
+          () => api.getRun(runRes.runId),
+          (r) => r.status === 'COMPLETED' || r.status === 'FAILED',
+          timeoutMs,
+        );
       }
-
-      const timeoutMs =
-        typeof wait === 'number' ? wait * 1000 : 300_000;
-
-      const result = await pollUntilDone<RunDetailResponse>(
-        () => api.getRun(runRes.runId),
-        (r) => r.status === 'COMPLETED' || r.status === 'FAILED',
-        timeoutMs,
-      );
 
       const updateInfo = await config.getUpdateInfo();
 
@@ -117,10 +128,13 @@ export const runCommand = new Command()
       }
 
       // Write output to file if requested
-      if (output && result.output) {
-        writeFileSync(output, JSON.stringify(result.output, null, 2));
-        if (!json) {
-          console.log(`Output written to ${output}`);
+      if (output) {
+        const outputData = resolveOutput(result);
+        if (outputData) {
+          writeFileSync(output, JSON.stringify(outputData, null, 2));
+          if (!json) {
+            console.log(`Output written to ${output}`);
+          }
         }
       }
 

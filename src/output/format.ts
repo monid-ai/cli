@@ -95,6 +95,10 @@ export function formatInspectResult(data: InspectResponse): void {
 
 // --- Run Detail ---
 
+export function resolveOutput(data: RunDetailResponse): Record<string, unknown> | undefined {
+  return data.providerResponse?.data ?? data.providerResponse?.error ?? data.output;
+}
+
 export function formatRunDetail(data: RunDetailResponse): void {
   console.log();
   console.log(chalk.bold('Run Details'));
@@ -103,6 +107,12 @@ export function formatRunDetail(data: RunDetailResponse): void {
   console.log(`  Provider: ${data.providerName || data.provider}`);
   console.log(`  Endpoint: ${data.endpoint}`);
   console.log(`  Status:   ${statusBadge(data.status)}`);
+
+  if (data.providerResponse) {
+    const status = data.providerResponse.httpStatus;
+    const statusColor = status >= 400 ? chalk.red : status >= 200 && status < 300 ? chalk.green : chalk.yellow;
+    console.log(`  Provider Response: ${statusColor(status.toString())}`);
+  }
 
   if (data.cost) {
     console.log(`  Cost:     $${data.cost.value.toFixed(4)} ${data.cost.currency}`);
@@ -118,10 +128,11 @@ export function formatRunDetail(data: RunDetailResponse): void {
     console.log(chalk.red(`  Error (${data.error.source}): ${data.error.message}`));
   }
 
-  if (data.output) {
+  const output = resolveOutput(data);
+  if (output) {
     console.log();
     console.log(chalk.bold('Output'));
-    console.log(JSON.stringify(data.output, null, 2));
+    console.log(JSON.stringify(output, null, 2));
   }
 
   console.log();

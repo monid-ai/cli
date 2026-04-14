@@ -19,6 +19,8 @@ export function muted(message: string): string {
 
 export function statusBadge(status: RunStatus): string {
   switch (status) {
+    case 'READY':
+      return chalk.cyan(status);
     case 'RUNNING':
       return chalk.yellow(status);
     case 'COMPLETED':
