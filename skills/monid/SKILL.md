@@ -1,6 +1,6 @@
 ---
 name: monid
-version: 0.0.7
+version: 0.0.8
 description: Monid is the data layer for AI agents — discover, inspect, and run data endpoints across the web. Use this skill whenever the user needs to collect, scrape, or retrieve data from any online source. Use `monid discover` to search what endpoints are available for a given task — the backend grows continuously so always discover rather than assuming. Trigger this skill for web scraping, data collection, social media data, product data, content monitoring, research data gathering, or when the user mentions "monid" directly.
 ---
 
