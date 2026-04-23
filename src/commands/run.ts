@@ -27,8 +27,10 @@ export const runCommand = new Command()
   .option('-e, --endpoint <endpoint:string>', 'Endpoint name.', {
     required: true,
   })
-  .option('-i, --input <input:string>', 'Input JSON string.')
-  .option('-f, --input-file <inputFile:string>', 'Read input from a JSON file.')
+  .option('-i, --input <input:string>', 'Body input JSON string.')
+  .option('-f, --input-file <inputFile:string>', 'Read body input from a JSON file.')
+  .option('--query <query:string>', 'Query parameters JSON string.')
+  .option('--path <path:string>', 'Path parameters JSON string.')
   .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds).')
   .option('-o, --output <output:string>', 'Write output to a file.')
   .option('-j, --json', 'Output as JSON.')
@@ -36,6 +38,8 @@ export const runCommand = new Command()
     const { provider, endpoint, json, wait, output } = options;
     const input = options.input as string | undefined;
     const inputFile = options.inputFile as string | undefined;
+    const queryRaw = options.query as string | undefined;
+    const pathRaw = options.path as string | undefined;
 
     try {
       const config = new ConfigManager();
@@ -47,8 +51,8 @@ export const runCommand = new Command()
         );
       }
 
-      // Parse input
-      let inputData: Record<string, unknown> = {};
+      // Parse body input
+      let inputData: Record<string, unknown> | undefined;
       if (input) {
         try {
           inputData = JSON.parse(input);
@@ -64,6 +68,26 @@ export const runCommand = new Command()
         }
       }
 
+      // Parse query params
+      let queryParams: Record<string, unknown> | undefined;
+      if (queryRaw) {
+        try {
+          queryParams = JSON.parse(queryRaw);
+        } catch {
+          throw new Error('Invalid JSON for --query. Use --query \'{"key": "value"}\' format.');
+        }
+      }
+
+      // Parse path params
+      let pathParams: Record<string, unknown> | undefined;
+      if (pathRaw) {
+        try {
+          pathParams = JSON.parse(pathRaw);
+        } catch {
+          throw new Error('Invalid JSON for --path. Use --path \'{"key": "value"}\' format.');
+        }
+      }
+
       const api = new MonidAPI({ apiKey: active.credential.key });
 
       if (!json) {
@@ -71,7 +95,7 @@ export const runCommand = new Command()
       }
 
       // Fire the run
-      const runRes = await api.run(provider, endpoint, inputData);
+      const runRes = await api.run(provider, endpoint, inputData, queryParams, pathParams);
 
       // Check if the run completed synchronously
       const isTerminal = runRes.status === 'COMPLETED' || runRes.status === 'FAILED';

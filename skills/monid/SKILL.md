@@ -77,7 +77,7 @@ When a user asks you to collect, scrape, or retrieve data from the web:
 
 1. **Discover what's available** — Run `monid discover -q "<data need>"` to search available endpoints. Results include a relevance score and verified badge. Use `-s <score>` to filter by minimum relevance. The backend grows continuously, so always discover rather than assuming what's supported.
 2. **Inspect before running** — Use `monid inspect` to read the input schema. The response includes a structured `input` field (with `pathParams`, `queryParams`, `body`, `bodyType`) that tells you exactly what parameters go where — never guess.
-3. **Run and wait** — Execute the endpoint with `monid run`. Use `--wait` to block until completion with built-in exponential backoff — this is the simplest option for sequential agents.
+3. **Run with the right flags** — Map the inspect output to `monid run` flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`. All three are optional. Use `--wait` to block until completion with built-in exponential backoff.
 4. **Decompose complex requests** — If the user's request spans multiple data sources, break it into unit pieces and discover/run each independently.
 
 ---
@@ -90,7 +90,7 @@ Each command supports `--help` for full usage. Here's what's available:
 |---------|-------------|
 | `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`) |
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
-| `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for inline JSON or `-f` for input file, `-w` to wait, `-o` to save output) |
+| `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs |
 | `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait) |
 | `monid keys add` | Add an API key (`-k <key> -l <label>`) |
@@ -203,13 +203,29 @@ monid runs get -r 01HLINK... -o linkedin_ai.json
 # Now analyze and compare the two result files
 ```
 
-### Flow 3: Using an input file for complex parameters
+### Flow 3: Using query and path parameters
+
+When `monid inspect` shows `queryParams` or `pathParams`, pass them with `--query` and `--path`:
+
+```bash
+# Inspect shows: body, queryParams, and pathParams
+monid inspect -p some-provider -e /users/{userId}/posts
+
+# Run with all three param types
+monid run -p some-provider -e /users/{userId}/posts \
+  --path '{"userId": "12345"}' \
+  --query '{"limit": 10, "sort": "recent"}' \
+  -i '{"filter": "public"}' \
+  -w -o posts.json
+```
+
+### Flow 4: Using an input file for complex parameters
 
 When input JSON is large or reusable, write it to a file and use `-f`:
 
 ```bash
 # Write input to a file
-# (assume params.json contains the endpoint's input parameters)
+# (assume params.json contains the endpoint's body input parameters)
 
 monid run -p apify -e /damilo/google-maps-scraper \
   -f params.json -w -o results.json
@@ -289,7 +305,7 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 
 ## Rules for Agents
 
-1. **Always inspect before running** — never guess input parameters. The `input` field from `monid inspect` is the source of truth. It shows `pathParams`, `queryParams`, `body`, and `bodyType` so you know exactly where each parameter goes.
+1. **Always inspect before running** — never guess input parameters. The `input` field from `monid inspect` is the source of truth. It shows `pathParams`, `queryParams`, `body`, and `bodyType` so you know exactly where each parameter goes. Map them to run flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`.
 2. **Keep discover queries short and focused** — noun phrases work best ("twitter posts", "amazon product prices"). Break complex requests into smaller unit pieces.
 3. **Prefer fire-and-poll for interactive use** — fire the run without `--wait`, then poll with `monid runs get` every 5-10 seconds. This keeps the conversation responsive. Use `--wait` only for async/background tasks where blocking 1-120 seconds is acceptable.
 4. **Always use `-o <file>`** to save results to a file once the run completes.
