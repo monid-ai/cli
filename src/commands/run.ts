@@ -110,6 +110,9 @@ export const runCommand = new Command()
           succeedSpinner(`Run started: ${runRes.runId}`);
           console.log(`Run ID: ${runRes.runId}`);
           console.log(`Status: ${statusBadge(runRes.status)}`);
+          if (runRes.cost !== undefined && runRes.cost !== null) {
+            console.log(`Cost: $${runRes.cost.value.toFixed(4)} ${runRes.cost.currency}`);
+          }
           if (runRes.providerResponse) {
             const httpStatus = runRes.providerResponse.httpStatus;
             const statusColor = httpStatus >= 400 ? chalk.red : httpStatus >= 200 && httpStatus < 300 ? chalk.green : chalk.yellow;

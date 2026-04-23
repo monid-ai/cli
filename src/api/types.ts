@@ -86,6 +86,7 @@ export interface RunResponse {
   endpoint: string;
   status: RunStatus;
   price: Price;
+  cost?: Cost | null;
   createdAt: string;
   providerResponse?: ProviderResponse;
 }

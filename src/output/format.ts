@@ -43,6 +43,10 @@ export function formatInspectResult(data: InspectResponse): void {
   console.log(chalk.bold('Endpoint'));
   console.log(`  ${data.endpoint}`);
 
+  console.log();
+  console.log(chalk.bold('Description'));
+  console.log(`  ${data.description}`);
+
   if (hasTag(data.tags, 'verified')) {
     console.log();
     console.log(chalk.dim('✓ Verified'));
@@ -126,7 +130,7 @@ export function formatRunDetail(data: RunDetailResponse): void {
     console.log(`  Provider Response: ${statusColor(status.toString())}`);
   }
 
-  if (data.cost) {
+  if (data.cost !== undefined && data.cost !== null) {
     console.log(`  Cost:     $${data.cost.value.toFixed(4)} ${data.cost.currency}`);
   }
 
