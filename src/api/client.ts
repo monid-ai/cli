@@ -54,9 +54,11 @@ export class MonidAPI {
   async discover(
     query: string,
     limit?: number,
+    minScore?: number,
   ): Promise<DiscoverResponse> {
     const body: Record<string, unknown> = { query };
     if (limit !== undefined) body.limit = limit;
+    if (minScore !== undefined) body.minScore = minScore;
     return this.request('POST', '/v1/discover', body);
   }
 

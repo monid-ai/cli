@@ -3,6 +3,7 @@ import { renderTable } from './table.js';
 import { statusBadge, price as formatPrice } from './colors.js';
 import type {
   DiscoverResponse,
+  EndpointInput,
   InspectResponse,
   RunDetailResponse,
   RunsListResponse,
@@ -17,15 +18,16 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
     return;
   }
 
-  const headers = ['Provider', 'Endpoint', 'Price', 'Description'];
+  const headers = ['Provider', 'Endpoint', 'Price', 'Description', 'Verified'];
   const rows = data.results.map((r) => [
     r.provider,
     r.endpoint,
     formatPriceCompact(r.price),
     truncate(r.description, 50),
+    hasTag(r.tags, 'verified') ? chalk.green('✓') : '',
   ]);
 
-  renderTable(headers, rows);
+  renderTable(headers, rows, { columns: { 4: { align: 'center' } } });
 }
 
 // --- Inspect ---
@@ -39,6 +41,11 @@ export function formatInspectResult(data: InspectResponse): void {
 
   console.log(chalk.bold('Endpoint'));
   console.log(`  ${data.endpoint}`);
+
+  if (hasTag(data.tags, 'verified')) {
+    console.log();
+    console.log(chalk.dim('✓ Verified'));
+  }
 
   if (data.summary) {
     console.log();
@@ -63,7 +70,11 @@ export function formatInspectResult(data: InspectResponse): void {
     });
   }
 
-  if (data.inputSchema) {
+  if (data.input) {
+    console.log();
+    console.log(chalk.bold('Input'));
+    formatStructuredInput(data.input);
+  } else if (data.inputSchema) {
     console.log();
     console.log(chalk.bold('Input Schema'));
     console.log(JSON.stringify(data.inputSchema, null, 2));
@@ -146,12 +157,13 @@ export function formatRunsList(data: RunsListResponse): void {
     return;
   }
 
-  const headers = ['Run ID', 'Provider', 'Endpoint', 'Status', 'Cost', 'Created'];
+  const headers = ['Run ID', 'Provider', 'Endpoint', 'Status', 'Response', 'Cost', 'Created'];
   const rows = data.items.map((r) => [
     r.runId.slice(0, 12) + '...',
     r.providerName || r.provider,
     r.endpoint,
     r.status,
+    formatHttpStatus(r.providerResponse?.httpStatus),
     r.cost ? `$${r.cost.value.toFixed(4)}` : '-',
     formatDate(r.createdAt),
   ]);
@@ -186,7 +198,55 @@ export function formatKeysList(
   renderTable(headers, rows);
 }
 
+// --- Structured Input ---
+
+/** Check whether a value is a non-empty object (has at least one key). */
+function isNonEmpty(obj: Record<string, unknown> | undefined): obj is Record<string, unknown> {
+  return obj !== undefined && Object.keys(obj).length > 0;
+}
+
+function formatStructuredInput(input: EndpointInput): void {
+  const hasPath = isNonEmpty(input.pathParams);
+  const hasQuery = isNonEmpty(input.queryParams);
+  const hasBody = isNonEmpty(input.body);
+
+  if (!hasPath && !hasQuery && !hasBody) {
+    console.log('  No input required.');
+    return;
+  }
+
+  if (hasPath) {
+    console.log(`  ${chalk.gray('Path Params')}`);
+    console.log(JSON.stringify(input.pathParams, null, 2));
+  }
+
+  if (hasQuery) {
+    console.log(`  ${chalk.gray('Query Params')}`);
+    console.log(JSON.stringify(input.queryParams, null, 2));
+  }
+
+  if (hasBody) {
+    const label = input.bodyType ? `Body (${input.bodyType})` : 'Body';
+    console.log(`  ${chalk.gray(label)}`);
+    console.log(JSON.stringify(input.body, null, 2));
+  }
+}
+
 // --- Helpers ---
+
+function hasTag(tags: string[] | undefined, tag: string): boolean {
+  if (!tags) return false;
+  const lower = tag.toLowerCase();
+  return tags.some((t) => t.toLowerCase() === lower);
+}
+
+function formatHttpStatus(status: number | undefined): string {
+  if (status === undefined) return '-';
+  const s = String(status);
+  if (status >= 200 && status < 300) return chalk.green(s);
+  if (status >= 300 && status < 400) return chalk.yellow(s);
+  return chalk.red(s);
+}
 
 function formatPriceCompact(p: { type: string; amount: number; currency: string }): string {
   return `$${p.amount}/${p.type === 'PER_CALL' ? 'call' : 'result'}`;

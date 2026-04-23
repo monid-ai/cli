@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
+import chalk from 'chalk';
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
@@ -85,6 +86,11 @@ export const runCommand = new Command()
           succeedSpinner(`Run started: ${runRes.runId}`);
           console.log(`Run ID: ${runRes.runId}`);
           console.log(`Status: ${statusBadge(runRes.status)}`);
+          if (runRes.providerResponse) {
+            const httpStatus = runRes.providerResponse.httpStatus;
+            const statusColor = httpStatus >= 400 ? chalk.red : httpStatus >= 200 && httpStatus < 300 ? chalk.green : chalk.yellow;
+            console.log(`Response: ${statusColor(String(httpStatus))}`);
+          }
           console.log(`Poll with: monid runs get -r ${runRes.runId}`);
           if (updateInfo) printUpdateNotice(updateInfo);
         }

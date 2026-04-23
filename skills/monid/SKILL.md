@@ -75,8 +75,8 @@ For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in outpu
 
 When a user asks you to collect, scrape, or retrieve data from the web:
 
-1. **Discover what's available** — Run `monid discover -q "<data need>"` to search available endpoints. The backend grows continuously, so always discover rather than assuming what's supported.
-2. **Inspect before running** — Use `monid inspect` to read the inputSchema. This tells you exactly what parameters are accepted — never guess.
+1. **Discover what's available** — Run `monid discover -q "<data need>"` to search available endpoints. Results include a relevance score and verified badge. Use `-s <score>` to filter by minimum relevance. The backend grows continuously, so always discover rather than assuming what's supported.
+2. **Inspect before running** — Use `monid inspect` to read the input schema. The response includes a structured `input` field (with `pathParams`, `queryParams`, `body`, `bodyType`) that tells you exactly what parameters go where — never guess.
 3. **Run and wait** — Execute the endpoint with `monid run`. Use `--wait` to block until completion with built-in exponential backoff — this is the simplest option for sequential agents.
 4. **Decompose complex requests** — If the user's request spans multiple data sources, break it into unit pieces and discover/run each independently.
 
@@ -88,8 +88,8 @@ Each command supports `--help` for full usage. Here's what's available:
 
 | Command | What it does |
 |---------|-------------|
-| `monid discover` | Search for data endpoints using natural language (`-q <query>`) |
-| `monid inspect` | Get full details and inputSchema for a specific endpoint (`-p <provider> -e <endpoint>`) |
+| `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`) |
+| `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for inline JSON or `-f` for input file, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs |
 | `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait) |
@@ -108,9 +108,11 @@ The standard workflow is: discover → inspect → run → poll.
 
 ```bash
 # 1. Discover endpoints for your data need
+# Results show relevance score and verified badge
+# Use -s to filter by minimum score (higher = more relevant)
 monid discover -q "twitter posts"
 
-# 2. Inspect the endpoint to learn its inputSchema
+# 2. Inspect the endpoint to learn its input schema (shows verified status)
 monid inspect -p apify -e /apidojo/tweet-scraper
 
 # 3. Fire the run (returns immediately with a run ID)
@@ -153,7 +155,7 @@ monid run -p apify -e /apidojo/tweet-scraper \
 # Discover what Twitter endpoints are available
 monid discover -q "twitter posts"
 
-# Inspect to learn the input parameters
+# Inspect to learn the input schema (pathParams, queryParams, body)
 monid inspect -p apify -e /apidojo/tweet-scraper
 
 # Run with a single search term, small limit
@@ -181,7 +183,7 @@ Break this into unit pieces — one endpoint per data source:
 monid discover -q "twitter posts"
 monid discover -q "linkedin posts"
 
-# Inspect each to learn their input schemas
+# Inspect each to learn their input schemas (pathParams, queryParams, body)
 monid inspect -p apify -e /apidojo/tweet-scraper
 monid inspect -p apify -e /harvestapi/linkedin-post-search
 
@@ -226,7 +228,7 @@ To control costs:
 - **Prefer a single query per call.** Pass one search term, one URL, one hashtag at a time.
 - **Start with small limits** (5-10) on the first call. Increase if needed.
 - **If the endpoint accepts an array** (e.g. `searchTerms`, `hashtags`, `urls`), pass only one element unless the user explicitly requests multiple.
-- **Check the inputSchema** from `monid inspect` to identify which parameters control volume.
+- **Check the input schema** from `monid inspect` to identify which parameters control volume.
 
 ---
 
@@ -287,7 +289,7 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 
 ## Rules for Agents
 
-1. **Always inspect before running** — never guess input parameters. The inputSchema from `monid inspect` is the source of truth.
+1. **Always inspect before running** — never guess input parameters. The `input` field from `monid inspect` is the source of truth. It shows `pathParams`, `queryParams`, `body`, and `bodyType` so you know exactly where each parameter goes.
 2. **Keep discover queries short and focused** — noun phrases work best ("twitter posts", "amazon product prices"). Break complex requests into smaller unit pieces.
 3. **Prefer fire-and-poll for interactive use** — fire the run without `--wait`, then poll with `monid runs get` every 5-10 seconds. This keeps the conversation responsive. Use `--wait` only for async/background tasks where blocking 1-120 seconds is acceptable.
 4. **Always use `-o <file>`** to save results to a file once the run completes.

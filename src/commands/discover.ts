@@ -10,9 +10,10 @@ export const discoverCommand = new Command()
   .name('discover')
   .description('Search for data endpoints using natural language.')
   .option('-q, --query <query:string>', 'Search query.', { required: true })
-  .option('-l, --limit <limit:number>', 'Maximum number of results (max 10).')
+  .option('-l, --limit <limit:number>', 'Maximum number of results (max 50).')
+  .option('-s, --min-score <minScore:number>', 'Minimum relevance score (float, higher = more relevant filtering).')
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ query, limit, json }) => {
+  .action(async ({ query, limit, minScore, json }) => {
     try {
       const config = new ConfigManager();
       const active = config.getActiveKey();
@@ -29,7 +30,7 @@ export const discoverCommand = new Command()
         startSpinner(`Searching for "${query}"...`);
       }
 
-      const data = await api.discover(query, limit);
+      const data = await api.discover(query, limit, minScore);
       const updateInfo = await config.getUpdateInfo();
 
       if (json) {

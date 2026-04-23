@@ -34,12 +34,23 @@ export interface DiscoverResult {
   endpoint: string;
   description: string;
   price: Price;
+  score: number;
+  tags: string[];
 }
 
 export interface DiscoverResponse {
   results: DiscoverResult[];
   query: string;
   count: number;
+}
+
+// --- Endpoint Input (structured) ---
+
+export interface EndpointInput {
+  pathParams?: Record<string, unknown>;
+  queryParams?: Record<string, unknown>;
+  body?: Record<string, unknown>;
+  bodyType?: string;
 }
 
 // --- Inspect ---
@@ -51,8 +62,12 @@ export interface InspectResponse {
   endpoint: string;
   description: string;
   summary?: string;
+  /** Structured input — JSON Schema per param location (path, query, body). Preferred over inputSchema. */
+  input?: EndpointInput;
+  /** Legacy flat input schema. Used as fallback when `input` is absent. */
   inputSchema?: Record<string, unknown>;
   price: Price;
+  tags?: string[];
   docUrl?: string;
   notes?: string[];
   usage: {
