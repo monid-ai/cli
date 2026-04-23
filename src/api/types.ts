@@ -131,6 +131,15 @@ export interface RunsListResponse {
   cursor: string | null;
 }
 
+// --- Balance ---
+
+export interface BalanceResponse {
+  balance: {
+    value: number;
+    currency: string;
+  };
+}
+
 // --- API Error ---
 
 export interface ApiErrorResponse {

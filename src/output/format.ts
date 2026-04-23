@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { renderTable } from './table.js';
 import { statusBadge, price as formatPrice } from './colors.js';
 import type {
+  BalanceResponse,
   DiscoverResponse,
   EndpointInput,
   InspectResponse,
@@ -196,6 +197,14 @@ export function formatKeysList(
   ]);
 
   renderTable(headers, rows);
+}
+
+// --- Balance ---
+
+export function formatBalance(data: BalanceResponse): void {
+  console.log();
+  console.log(`  Balance: ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
+  console.log();
 }
 
 // --- Structured Input ---

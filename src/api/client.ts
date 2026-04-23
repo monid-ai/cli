@@ -1,6 +1,7 @@
 import { API_BASE_URL } from '../config/constants.js';
 import { MonidError } from '../utils/error.js';
 import type {
+  BalanceResponse,
   DiscoverResponse,
   InspectResponse,
   RunResponse,
@@ -85,6 +86,10 @@ export class MonidAPI {
 
   async getRun(runId: string): Promise<RunDetailResponse> {
     return this.request('GET', `/v1/runs/${encodeURIComponent(runId)}`);
+  }
+
+  async getBalance(): Promise<BalanceResponse> {
+    return this.request('GET', '/v1/wallet/balance');
   }
 
   async listRuns(
