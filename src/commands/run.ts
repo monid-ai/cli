@@ -52,17 +52,17 @@ export const runCommand = new Command()
       }
 
       // Parse body input
-      let inputData: Record<string, unknown> | undefined;
+      let bodyData: Record<string, unknown> | undefined;
       if (input) {
         try {
-          inputData = JSON.parse(input);
+          bodyData = JSON.parse(input);
         } catch {
           throw new Error('Invalid JSON input. Use -i \'{"key": "value"}\' format.');
         }
       } else if (inputFile) {
         try {
           const fileContent = readFileSync(inputFile, 'utf-8');
-          inputData = JSON.parse(fileContent);
+          bodyData = JSON.parse(fileContent);
         } catch {
           throw new Error(`Failed to read or parse input file: ${inputFile}`);
         }
@@ -95,7 +95,7 @@ export const runCommand = new Command()
       }
 
       // Fire the run
-      const runRes = await api.run(provider, endpoint, inputData, queryParams, pathParams);
+      const runRes = await api.run(provider, endpoint, bodyData, queryParams, pathParams);
 
       // Check if the run completed synchronously
       const isTerminal = runRes.status === 'COMPLETED' || runRes.status === 'FAILED';

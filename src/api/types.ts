@@ -98,7 +98,7 @@ export interface RunDetailResponse {
   providerName?: string;
   endpoint: string;
   status: RunStatus;
-  input?: Record<string, unknown>;
+  input?: EndpointInput;
   output?: Record<string, unknown>;
   error?: RunError;
   providerResponse?: ProviderResponse;

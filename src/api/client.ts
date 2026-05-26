@@ -73,15 +73,19 @@ export class MonidAPI {
   async run(
     provider: string,
     endpoint: string,
-    input?: Record<string, unknown>,
+    body?: Record<string, unknown>,
     queryParams?: Record<string, unknown>,
     pathParams?: Record<string, unknown>,
   ): Promise<RunResponse> {
-    const body: Record<string, unknown> = { provider, endpoint };
-    if (input && Object.keys(input).length > 0) body.input = input;
-    if (queryParams) body.queryParams = queryParams;
-    if (pathParams) body.pathParams = pathParams;
-    return this.request('POST', '/v1/run', body);
+    let input: Record<string, unknown> = {};
+    if (body && Object.keys(body).length > 0) input.body = body;
+    if (queryParams && Object.keys(queryParams).length > 0) input.queryParams = queryParams;
+    if (pathParams && Object.keys(pathParams).length > 0) input.pathParams = pathParams;
+
+    const reqBody: Record<string, unknown> = { provider, endpoint };
+    if (Object.keys(input).length > 0) reqBody.input = input;
+
+    return this.request('POST', '/v1/run', reqBody);
   }
 
   async getRun(runId: string): Promise<RunDetailResponse> {

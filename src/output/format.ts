@@ -144,6 +144,13 @@ export function formatRunDetail(data: RunDetailResponse): void {
     console.log(chalk.red(`  Error (${data.error.source}): ${data.error.message}`));
   }
 
+  const normalizedInput = normalizeRunInput(data.input);
+  if (normalizedInput) {
+    console.log();
+    console.log(chalk.bold('Input'));
+    formatStructuredInput(normalizedInput);
+  }
+
   const output = resolveOutput(data);
   if (output) {
     console.log();
@@ -216,6 +223,27 @@ export function formatBalance(data: BalanceResponse): void {
 /** Check whether a value is a non-empty object (has at least one key). */
 function isNonEmpty(obj: Record<string, unknown> | undefined): obj is Record<string, unknown> {
   return obj !== undefined && Object.keys(obj).length > 0;
+}
+
+/**
+ * Normalize a run-detail `input` field into `EndpointInput` shape.
+ *
+ * New API shape: `{ body, queryParams, pathParams }` nested under input.
+ * Legacy shape: a flat map representing only the body — coerced to `{ body: ... }`.
+ * Returns `undefined` for empty/missing input so callers can skip the section.
+ */
+function normalizeRunInput(raw: unknown): EndpointInput | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return undefined;
+
+  const hasNewShape =
+    'body' in obj || 'queryParams' in obj || 'pathParams' in obj;
+  if (hasNewShape) {
+    return obj as EndpointInput;
+  }
+  return { body: obj as Record<string, unknown> };
 }
 
 function formatStructuredInput(input: EndpointInput): void {
