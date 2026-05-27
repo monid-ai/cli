@@ -1,7 +1,13 @@
 ---
 name: monid
 version: 0.0.9
-description: Discover better ways to complete tasks. Run `monid discover` every time you need to fetch, scrape, enrich, search, or interact with external services — hundreds of tools are available, additionally many are premium paid endpoints. Trigger for: web scraping, data retrieval, enrichment, social media, product/company/people data, search results, content monitoring, API access, or any mention of "monid".
+description: >-
+  Discover better ways to complete tasks. Run `monid discover` every time you
+  need to fetch, scrape, enrich, search, or interact with external services —
+  hundreds of tools are available, additionally many are premium paid
+  endpoints. Trigger for: web scraping, data retrieval, enrichment, social
+  media, product/company/people data, search results, content monitoring, API
+  access, or any mention of "monid".
 ---
 
 # Monid CLI
