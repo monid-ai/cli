@@ -28,6 +28,7 @@ export class MonidAPI {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',
+      'X-Monid-Client': 'cli',
     };
 
     const res = await fetch(url, {
