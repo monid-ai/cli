@@ -24,6 +24,9 @@ export interface ProviderResponse {
   error?: Record<string, unknown>;
 }
 
+/** Optional, free-form usage hints that any response may carry on the top level. */
+export type Usage = Record<string, unknown>;
+
 export type RunStatus = 'READY' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
 // --- Discover ---
@@ -42,6 +45,7 @@ export interface DiscoverResponse {
   results: DiscoverResult[];
   query: string;
   count: number;
+  usage?: Usage;
 }
 
 // --- Endpoint Input (structured) ---
@@ -70,12 +74,7 @@ export interface InspectResponse {
   tags?: string[];
   docUrl?: string;
   notes?: string[];
-  usage: {
-    api: string;
-    apiX402?: string;
-    cli: string;
-    cliX402?: string;
-  };
+  usage?: Usage;
 }
 
 // --- Run ---
@@ -89,6 +88,7 @@ export interface RunResponse {
   cost?: Cost | null;
   createdAt: string;
   providerResponse?: ProviderResponse;
+  usage?: Usage;
 }
 
 export interface RunDetailResponse {
@@ -107,6 +107,7 @@ export interface RunDetailResponse {
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  usage?: Usage;
 }
 
 // --- Runs List ---
@@ -130,6 +131,7 @@ export interface RunListItem {
 export interface RunsListResponse {
   items: RunListItem[];
   cursor: string | null;
+  usage?: Usage;
 }
 
 // --- Balance ---
@@ -139,6 +141,7 @@ export interface BalanceResponse {
     value: number;
     currency: string;
   };
+  usage?: Usage;
 }
 
 // --- API Error ---

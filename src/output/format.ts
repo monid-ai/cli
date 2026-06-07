@@ -29,6 +29,8 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
   ]);
 
   renderTable(headers, rows, { columns: { 4: { align: 'center' } } });
+
+  formatUsage(data.usage);
 }
 
 // --- Inspect ---
@@ -99,12 +101,7 @@ export function formatInspectResult(data: InspectResponse): void {
     }
   }
 
-  if (data.usage) {
-    console.log();
-    console.log(chalk.bold('Usage'));
-    console.log(`  ${chalk.gray('API:')} ${data.usage.api}`);
-    console.log(`  ${chalk.gray('CLI:')} ${data.usage.cli}`);
-  }
+  formatUsage(data.usage);
 
   console.log();
 }
@@ -158,6 +155,8 @@ export function formatRunDetail(data: RunDetailResponse): void {
     console.log(JSON.stringify(output, null, 2));
   }
 
+  formatUsage(data.usage);
+
   console.log();
 }
 
@@ -185,6 +184,8 @@ export function formatRunsList(data: RunsListResponse): void {
   if (data.cursor) {
     console.log(chalk.gray(`More results available. Use --cursor ${data.cursor}`));
   }
+
+  formatUsage(data.usage);
 }
 
 // --- Keys List ---
@@ -215,6 +216,7 @@ export function formatKeysList(
 export function formatBalance(data: BalanceResponse): void {
   console.log();
   console.log(`  Balance: ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
+  formatUsage(data.usage);
   console.log();
 }
 
@@ -271,6 +273,45 @@ function formatStructuredInput(input: EndpointInput): void {
     console.log(`  ${chalk.gray(label)}`);
     console.log(JSON.stringify(input.body, null, 2));
   }
+}
+
+// --- Usage (flexible, optional) ---
+
+/**
+ * Render an optional, free-form `usage` object that any response may carry.
+ *
+ * The shape is not fixed: whatever keys are present are rendered as
+ * `Label: value`. Absent/empty usage renders nothing. `undefined`/`null`
+ * values are skipped (never printed). Object/array values are JSON-stringified.
+ */
+function formatUsage(usage: Record<string, unknown> | undefined): void {
+  if (!usage || typeof usage !== 'object') return;
+  const entries = Object.entries(usage).filter(
+    ([, value]) => value !== undefined && value !== null,
+  );
+  if (entries.length === 0) return;
+
+  console.log();
+  console.log(chalk.bold('Usage'));
+  for (const [key, value] of entries) {
+    const rendered = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    console.log(`  ${chalk.gray(`${formatUsageLabel(key)}:`)} ${rendered}`);
+  }
+}
+
+/**
+ * Make a usage key human-readable without assuming a specific key set.
+ * Splits camelCase, then upper-cases short tokens that look like acronyms
+ * (e.g. `api` -> `API`, `cli` -> `CLI`, `apiX402` -> `API X402`).
+ */
+function formatUsageLabel(key: string): string {
+  const words = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .split(/[\s_-]+/)
+    .filter(Boolean);
+  return words
+    .map((w) => (/^[a-z]{1,4}$/.test(w) ? w.toUpperCase() : w))
+    .join(' ');
 }
 
 // --- Helpers ---
