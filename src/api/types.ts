@@ -24,8 +24,11 @@ export interface ProviderResponse {
   error?: Record<string, unknown>;
 }
 
-/** Optional, free-form usage hints that any response may carry on the top level. */
-export type Usage = Record<string, unknown>;
+/** Optional, free-form hints map that any response may carry on the top level. */
+export type Hints = Record<string, unknown>;
+
+/** @deprecated Renamed to `Hints`. Kept for backward compatibility. */
+export type Usage = Hints;
 
 export type RunStatus = 'READY' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
@@ -45,6 +48,8 @@ export interface DiscoverResponse {
   results: DiscoverResult[];
   query: string;
   count: number;
+  hints?: Hints;
+  /** @deprecated Use `hints` instead. */
   usage?: Usage;
 }
 
@@ -74,6 +79,8 @@ export interface InspectResponse {
   tags?: string[];
   docUrl?: string;
   notes?: string[];
+  hints?: Hints;
+  /** @deprecated Use `hints` instead. */
   usage?: Usage;
 }
 
@@ -88,6 +95,8 @@ export interface RunResponse {
   cost?: Cost | null;
   createdAt: string;
   providerResponse?: ProviderResponse;
+  hints?: Hints;
+  /** @deprecated Use `hints` instead. */
   usage?: Usage;
 }
 
@@ -107,6 +116,8 @@ export interface RunDetailResponse {
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  hints?: Hints;
+  /** @deprecated Use `hints` instead. */
   usage?: Usage;
 }
 
@@ -131,6 +142,8 @@ export interface RunListItem {
 export interface RunsListResponse {
   items: RunListItem[];
   cursor: string | null;
+  hints?: Hints;
+  /** @deprecated Use `hints` instead. */
   usage?: Usage;
 }
 
@@ -141,6 +154,8 @@ export interface BalanceResponse {
     value: number;
     currency: string;
   };
+  hints?: Hints;
+  /** @deprecated Use `hints` instead. */
   usage?: Usage;
 }
 
