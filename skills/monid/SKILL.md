@@ -87,6 +87,10 @@ For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in outpu
 4. **Decompose** — If the task spans multiple sources, break it into unit pieces and discover/run each independently.
 5. **Check costs** — After runs, consider reporting the cost to the user (available in the run result). Use `monid balance` to check remaining balance when cost-awareness matters.
 
+### Check the Hints
+
+Commands can return a **Hints** block. When present, it carries suggested actions from the server: which command to run next, how this endpoint relates to others, or caveats worth knowing. Read it before deciding your next move, and prefer its suggestions over guessing. With `-j`, the same data is on the response's `hints` field.
+
 ---
 
 ## Commands
@@ -324,3 +328,4 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 6. **Start with conservative limits** — small `maxItems`/`maxResults` values (5-10) on first calls. The cost warning above explains why.
 7. **Report costs when relevant** — after a run completes, the result includes `cost.value`. Consider telling the user how much the run cost. Use `monid balance` to check remaining balance if the user cares about budget. Use your judgment — don't report costs if the user hasn't indicated cost-awareness.
 8. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
+9. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.

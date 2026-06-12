@@ -6,7 +6,7 @@ import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError } from '../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
-import { formatRunDetail, resolveOutput } from '../output/format.js';
+import { formatRunDetail, resolveOutput, formatHints } from '../output/format.js';
 import {
   startSpinner,
   succeedSpinner,
@@ -118,7 +118,7 @@ export const runCommand = new Command()
             const statusColor = httpStatus >= 400 ? chalk.red : httpStatus >= 200 && httpStatus < 300 ? chalk.green : chalk.yellow;
             console.log(`Response: ${statusColor(String(httpStatus))}`);
           }
-          console.log(`Poll with: monid runs get -r ${runRes.runId}`);
+          formatHints(runRes.hints ?? runRes.usage);
           if (updateInfo) printUpdateNotice(updateInfo);
         }
         return;

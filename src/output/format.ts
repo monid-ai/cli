@@ -286,7 +286,7 @@ function formatStructuredInput(input: EndpointInput): void {
  * `undefined`/`null` values are skipped (never printed). Object/array values
  * are JSON-stringified; everything else is coerced to a string.
  */
-function formatHints(hints: Record<string, unknown> | undefined): void {
+export function formatHints(hints: Record<string, unknown> | undefined): void {
   if (!hints || typeof hints !== 'object') return;
   const entries = Object.entries(hints).filter(
     ([, value]) => value !== undefined && value !== null,
@@ -297,23 +297,8 @@ function formatHints(hints: Record<string, unknown> | undefined): void {
   console.log(chalk.bold('Hints'));
   for (const [key, value] of entries) {
     const rendered = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    console.log(`  ${chalk.gray(`${formatHintsLabel(key)}:`)} ${rendered}`);
+    console.log(`  ${chalk.gray(`${key}:`)} ${rendered}`);
   }
-}
-
-/**
- * Make a hint key human-readable without assuming a specific key set.
- * Splits camelCase, then upper-cases short tokens that look like acronyms
- * (e.g. `api` -> `API`, `cli` -> `CLI`, `apiX402` -> `API X402`).
- */
-function formatHintsLabel(key: string): string {
-  const words = key
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[\s_-]+/)
-    .filter(Boolean);
-  return words
-    .map((w) => (/^[a-z]{1,4}$/.test(w) ? w.toUpperCase() : w))
-    .join(' ');
 }
 
 // --- Helpers ---
