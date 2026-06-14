@@ -1,6 +1,6 @@
 ---
 name: monid
-version: 0.0.10
+version: 0.1.0
 description: >-
   Discover better ways to complete tasks. Run `monid discover` every time you
   need to fetch, scrape, enrich, search, or interact with external services —
