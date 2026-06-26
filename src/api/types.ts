@@ -30,7 +30,44 @@ export type Hints = Record<string, unknown>;
 /** @deprecated Renamed to `Hints`. Kept for backward compatibility. */
 export type Usage = Hints;
 
-export type RunStatus = 'READY' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type RunStatus =
+  | 'READY'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'BLOCKED';
+
+// --- Control Snapshots ---
+
+export interface MonetaryValue {
+  value: number;
+  currency: string;
+}
+
+export type WorkspaceBudgetPeriod = string;
+
+export interface BudgetControlSnapshot {
+  type: 'WORKSPACE_BUDGET';
+  period: WorkspaceBudgetPeriod;
+  limitAmount: MonetaryValue;
+  availableAmount: MonetaryValue;
+  heldAmount: MonetaryValue;
+  spentAmount: MonetaryValue;
+  windowStart: string;
+}
+
+export interface RunCapControlSnapshot {
+  type: 'WORKSPACE_RUN_CAP';
+  limitAmount: MonetaryValue;
+}
+
+export type ControlSnapshot = BudgetControlSnapshot | RunCapControlSnapshot;
+
+/** A control snapshot that contributed to blocking a run. */
+export interface RunControl {
+  controlId: string;
+  snapshot: ControlSnapshot;
+}
 
 // --- Discover ---
 
@@ -95,6 +132,8 @@ export interface RunResponse {
   cost?: Cost | null;
   createdAt: string;
   providerResponse?: ProviderResponse;
+  /** Control snapshots that blocked the run (present when status is BLOCKED). */
+  controls?: RunControl[];
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
@@ -109,13 +148,15 @@ export interface RunDetailResponse {
   status: RunStatus;
   input?: EndpointInput;
   output?: Record<string, unknown>;
-  error?: RunError;
+  error?: RunError | string;
   providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  /** Control snapshots that blocked the run (present when status is BLOCKED). */
+  controls?: RunControl[];
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
@@ -130,13 +171,15 @@ export interface RunListItem {
   providerName?: string;
   endpoint: string;
   status: RunStatus;
-  error?: RunError;
+  error?: RunError | string;
   providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
+  /** Control snapshots that blocked the run (present when status is BLOCKED). */
+  controls?: RunControl[];
 }
 
 export interface RunsListResponse {

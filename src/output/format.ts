@@ -3,9 +3,13 @@ import { renderTable } from './table.js';
 import { statusBadge, price as formatPrice } from './colors.js';
 import type {
   BalanceResponse,
+  ControlSnapshot,
   DiscoverResponse,
   EndpointInput,
   InspectResponse,
+  MonetaryValue,
+  RunControl,
+  RunError,
   RunDetailResponse,
   RunsListResponse,
 } from '../api/types.js';
@@ -136,9 +140,18 @@ export function formatRunDetail(data: RunDetailResponse): void {
     console.log(`  Completed: ${formatDate(data.completedAt)}`);
   }
 
-  if (data.error) {
+  const errorText = formatRunError(data.error);
+  if (errorText) {
     console.log();
-    console.log(chalk.red(`  Error (${data.error.source}): ${data.error.message}`));
+    console.log(chalk.red(`  Error: ${errorText}`));
+  }
+
+  if (data.controls?.length) {
+    console.log();
+    console.log(chalk.bold('Blocking Controls'));
+    for (const control of data.controls) {
+      formatRunControl(control);
+    }
   }
 
   const normalizedInput = normalizeRunInput(data.input);
@@ -173,7 +186,7 @@ export function formatRunsList(data: RunsListResponse): void {
     r.runId.slice(0, 12) + '...',
     r.providerName || r.provider,
     r.endpoint,
-    r.status,
+    statusBadge(r.status),
     formatHttpStatus(r.providerResponse?.httpStatus),
     r.cost ? `$${r.cost.value.toFixed(4)}` : '-',
     formatDate(r.createdAt),
@@ -301,7 +314,55 @@ export function formatHints(hints: Record<string, unknown> | undefined): void {
   }
 }
 
+// --- Control Snapshots ---
+
+function formatMonetary(m: MonetaryValue): string {
+  return `$${m.value.toFixed(4)} ${m.currency}`;
+}
+
+function formatRunControl(control: RunControl): void {
+  console.log(`  ${chalk.gray('Control ID:')} ${control.controlId}`);
+  formatControlSnapshot(control.snapshot);
+  console.log();
+}
+
+function formatControlSnapshot(snapshot: ControlSnapshot): void {
+  switch (snapshot.type) {
+    case 'WORKSPACE_BUDGET':
+      console.log(`    ${chalk.gray('Type:')}      Workspace Budget`);
+      console.log(`    ${chalk.gray('Period:')}    ${snapshot.period}`);
+      console.log(`    ${chalk.gray('Window:')}    ${formatDate(snapshot.windowStart)}`);
+      console.log(`    ${chalk.gray('Limit:')}     ${formatMonetary(snapshot.limitAmount)}`);
+      console.log(`    ${chalk.gray('Available:')} ${formatMonetary(snapshot.availableAmount)}`);
+      console.log(`    ${chalk.gray('Held:')}      ${formatMonetary(snapshot.heldAmount)}`);
+      console.log(`    ${chalk.gray('Spent:')}     ${formatMonetary(snapshot.spentAmount)}`);
+      break;
+    case 'WORKSPACE_RUN_CAP':
+      console.log(`    ${chalk.gray('Type:')}  Workspace Run Cap`);
+      console.log(`    ${chalk.gray('Limit:')} ${formatMonetary(snapshot.limitAmount)}`);
+      break;
+    default:
+      // Unknown/future control type — render raw so it still surfaces.
+      console.log(`    ${JSON.stringify(snapshot, null, 2)}`);
+  }
+}
+
 // --- Helpers ---
+
+/**
+ * Normalize a run-level `error` into a display string. The API may send `error`
+ * as a plain string or as a structured `{ source, message }` object. Returns
+ * `undefined` for empty/missing errors so callers can skip the section.
+ */
+function formatRunError(error: RunError | string | undefined): string | undefined {
+  if (!error) return undefined;
+  if (typeof error === 'string') {
+    return error.trim() || undefined;
+  }
+  if (!error.source && !error.message) return undefined;
+  const message = error.message ?? 'No details provided.';
+  return error.source ? `(${error.source}) ${message}` : message;
+}
 
 function hasTag(tags: string[] | undefined, tag: string): boolean {
   if (!tags) return false;

@@ -50,7 +50,10 @@ export const runsGetCommand = new Command()
 
         result = await pollUntilDone<RunDetailResponse>(
           () => api.getRun(runId),
-          (r) => r.status === 'COMPLETED' || r.status === 'FAILED',
+          (r) =>
+            r.status === 'COMPLETED' ||
+            r.status === 'FAILED' ||
+            r.status === 'BLOCKED',
           timeoutMs,
         );
       } else {
@@ -67,6 +70,8 @@ export const runsGetCommand = new Command()
           succeedSpinner(`Run completed: ${result.runId}`);
         } else if (result.status === 'FAILED') {
           failSpinner(`Run failed: ${result.runId}`);
+        } else if (result.status === 'BLOCKED') {
+          failSpinner(`Run blocked: ${result.runId}`);
         } else {
           succeedSpinner(`Run status: ${result.status}`);
         }

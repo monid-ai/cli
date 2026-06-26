@@ -27,6 +27,8 @@ export function statusBadge(status: RunStatus): string {
       return chalk.green(status);
     case 'FAILED':
       return chalk.red(status);
+    case 'BLOCKED':
+      return chalk.yellow(status);
     default:
       return status;
   }

@@ -98,7 +98,10 @@ export const runCommand = new Command()
       const runRes = await api.run(provider, endpoint, bodyData, queryParams, pathParams);
 
       // Check if the run completed synchronously
-      const isTerminal = runRes.status === 'COMPLETED' || runRes.status === 'FAILED';
+      const isTerminal =
+        runRes.status === 'COMPLETED' ||
+        runRes.status === 'FAILED' ||
+        runRes.status === 'BLOCKED';
 
       if (!wait && !isTerminal) {
         // Default: fire and return the run ID (only if not already complete)
@@ -141,7 +144,10 @@ export const runCommand = new Command()
 
         result = await pollUntilDone<RunDetailResponse>(
           () => api.getRun(runRes.runId),
-          (r) => r.status === 'COMPLETED' || r.status === 'FAILED',
+          (r) =>
+            r.status === 'COMPLETED' ||
+            r.status === 'FAILED' ||
+            r.status === 'BLOCKED',
           timeoutMs,
         );
       }
@@ -154,6 +160,8 @@ export const runCommand = new Command()
       } else {
         if (result.status === 'COMPLETED') {
           succeedSpinner(`Run completed: ${result.runId}`);
+        } else if (result.status === 'BLOCKED') {
+          failSpinner(`Run blocked: ${result.runId}`);
         } else {
           failSpinner(`Run failed: ${result.runId}`);
         }
