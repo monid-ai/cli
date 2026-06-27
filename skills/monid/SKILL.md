@@ -284,8 +284,11 @@ API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate
 | `RUNNING` | Actively executing |
 | `COMPLETED` | Finished successfully — results available |
 | `FAILED` | Execution failed — check error details |
+| `BLOCKED` | A workspace control (budget or run cap) prevented the run — see the `controls` list for which one |
 
 Runs typically take **1 to 120 seconds** depending on the endpoint and data volume.
+
+When a run is `BLOCKED`, the response includes a `controls` array of the snapshots that blocked it. Each entry has a `controlId` and a `snapshot` describing the limit — currently `WORKSPACE_BUDGET` (period plus limit / available / held / spent amounts) or `WORKSPACE_RUN_CAP` (a per-run limit amount). A `BLOCKED` run is **terminal** — it will not proceed on its own, so polling stops. **Tell the user the run was blocked by a workspace control and that they can pause or modify these controls from the dashboard at https://app.monid.ai before retrying.**
 
 ---
 
@@ -314,6 +317,8 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 
 **Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
 
+**Run status BLOCKED** — A workspace control stopped the run before it executed (e.g. a budget cap or run cap). Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until the control is changed — let the user know they can pause or adjust the control on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
+
 **Run taking a long time** — Normal for some endpoints. Runs can take up to 120 seconds. Keep polling or let `--wait` handle it.
 
 ---
@@ -329,3 +334,4 @@ Runs typically take **1 to 120 seconds** depending on the endpoint and data volu
 7. **Report costs when relevant** — after a run completes, the result includes `cost.value`. Consider telling the user how much the run cost. Use `monid balance` to check remaining balance if the user cares about budget. Use your judgment — don't report costs if the user hasn't indicated cost-awareness.
 8. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
 9. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.
+10. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.
