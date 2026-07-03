@@ -6,6 +6,7 @@ import type {
   InspectResponse,
   RunResponse,
   RunDetailResponse,
+  RunStopResponse,
   RunsListResponse,
   ApiErrorResponse,
 } from './types.js';
@@ -91,6 +92,10 @@ export class MonidAPI {
 
   async getRun(runId: string): Promise<RunDetailResponse> {
     return this.request('GET', `/v1/runs/${encodeURIComponent(runId)}`);
+  }
+
+  async stopRun(runId: string): Promise<RunStopResponse> {
+    return this.request('POST', `/v1/runs/${encodeURIComponent(runId)}/stop`);
   }
 
   async getBalance(): Promise<BalanceResponse> {

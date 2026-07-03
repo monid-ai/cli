@@ -1,6 +1,7 @@
 import { Command } from '@cliffy/command';
 import { runsListCommand } from './list.js';
 import { runsGetCommand } from './get.js';
+import { runsStopCommand } from './stop.js';
 
 export const runsCommand = new Command()
   .name('runs')
@@ -9,4 +10,5 @@ export const runsCommand = new Command()
     this.showHelp();
   })
   .command('list', runsListCommand)
-  .command('get', runsGetCommand);
+  .command('get', runsGetCommand)
+  .command('stop', runsStopCommand);

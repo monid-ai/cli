@@ -35,7 +35,9 @@ export type RunStatus =
   | 'RUNNING'
   | 'COMPLETED'
   | 'FAILED'
-  | 'BLOCKED';
+  | 'BLOCKED'
+  | 'STOPPED'
+  | 'TIME_OUT';
 
 // --- Control Snapshots ---
 
@@ -160,6 +162,14 @@ export interface RunDetailResponse {
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
+}
+
+// --- Run Stop ---
+
+export interface RunStopResponse {
+  runId: string;
+  status: RunStatus;
+  message?: string;
 }
 
 // --- Runs List ---

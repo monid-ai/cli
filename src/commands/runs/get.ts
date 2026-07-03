@@ -53,7 +53,9 @@ export const runsGetCommand = new Command()
           (r) =>
             r.status === 'COMPLETED' ||
             r.status === 'FAILED' ||
-            r.status === 'BLOCKED',
+            r.status === 'BLOCKED' ||
+            r.status === 'STOPPED' ||
+            r.status === 'TIME_OUT',
           timeoutMs,
         );
       } else {
@@ -72,6 +74,10 @@ export const runsGetCommand = new Command()
           failSpinner(`Run failed: ${result.runId}`);
         } else if (result.status === 'BLOCKED') {
           failSpinner(`Run blocked: ${result.runId}`);
+        } else if (result.status === 'STOPPED') {
+          succeedSpinner(`Run stopped: ${result.runId}`);
+        } else if (result.status === 'TIME_OUT') {
+          failSpinner(`Run timed out: ${result.runId}`);
         } else {
           succeedSpinner(`Run status: ${result.status}`);
         }
