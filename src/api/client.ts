@@ -7,9 +7,38 @@ import type {
   RunResponse,
   RunDetailResponse,
   RunStopResponse,
+  SetupTelemetryRequest,
   RunsListResponse,
   ApiErrorResponse,
 } from './types.js';
+
+export class MonidPublicAPI {
+  private baseUrl: string;
+
+  constructor(config?: { baseUrl?: string }) {
+    this.baseUrl = (config?.baseUrl ?? API_BASE_URL).replace(/\/+$/, '');
+  }
+
+  async sendSetupTelemetry(input: SetupTelemetryRequest): Promise<void> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+
+    try {
+      const res = await fetch(`${this.baseUrl}/public/v1/telemetry/skill-setup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
 
 export class MonidAPI {
   private baseUrl: string;

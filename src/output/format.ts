@@ -168,6 +168,11 @@ export function formatRunDetail(data: RunDetailResponse): void {
     console.log(JSON.stringify(output, null, 2));
   }
 
+  if (data.stoppable) {
+    console.log();
+    console.log(chalk.dim(`This run is stoppable. Stop it with: monid runs stop -r ${data.runId}`));
+  }
+
   formatHints(data.hints ?? data.usage);
 
   console.log();

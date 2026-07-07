@@ -32,7 +32,10 @@ If `monid` is not found, install it:
 
 ```bash
 npm install -g @monid-ai/cli
+monid setup --client <agent-name-if-known> --email <email-if-already-provided>
 ```
+
+After installing, run `monid setup` to complete CLI setup. Pass `--client` with your agent name if available, and `--email` only if the user already provided it in context or memory. Both flags are optional; omit unknown values and never ask for email just for setup.
 
 To update to the latest version:
 
@@ -104,7 +107,9 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs |
 | `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait) |
+| `monid runs stop` | Stop an in-progress run (`-r <runId>`). Not all runs can be stopped |
 | `monid balance` | Show current workspace balance |
+| `monid setup` | Complete CLI setup after installation (no API key required) |
 | `monid keys add` | Add an API key (`-k <key> -l <label>`) |
 | `monid keys list` | Show configured keys |
 | `monid keys remove` | Remove a key (`-l <label>`, `-f` to skip confirmation) |
@@ -285,8 +290,31 @@ API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate
 | `COMPLETED` | Finished successfully — results available |
 | `FAILED` | Execution failed — check error details |
 | `BLOCKED` | A workspace control (budget or run cap) prevented the run — see the `controls` list for which one |
+| `STOPPED` | The run was stopped on request via `monid runs stop` |
+| `TIME_OUT` | The run exceeded its time limit and was terminated |
 
 Runs typically take **1 to 120 seconds** depending on the endpoint and data volume.
+
+**Stopping a run**
+
+Request a stop with `monid runs stop`:
+
+```bash
+monid runs stop -r 01HXYZ...
+```
+
+**Not all runs can be stopped.** Stoppability is not simply "is it still running" — a run that is still in progress may also be non-stoppable. The authoritative signal is the `stoppable` field on the run detail from `monid runs get -r <runId>` (from `GET /v1/runs/{id}`): only attempt a stop when `stoppable` is `true`. If `stoppable` is `false`, do not attempt it — this includes runs in a terminal state (`COMPLETED`, `FAILED`, `BLOCKED`, `STOPPED`, `TIME_OUT`) as well as in-progress runs that the platform does not allow stopping. Attempting to stop a non-stoppable run returns a conflict.
+
+```bash
+# Check the run first; when stoppable, the output ends with a hint line
+monid runs get -r 01HXYZ...
+# -> This run is stoppable. Stop it with: monid runs stop -r 01HXYZ...
+
+# Then stop it
+monid runs stop -r 01HXYZ...
+```
+
+A stop is accepted asynchronously — poll with `monid runs get -r <runId>` until the run reaches `STOPPED`.
 
 When a run is `BLOCKED`, the response includes a `controls` array of the snapshots that blocked it. Each entry has a `controlId` and a `snapshot` describing the limit — currently `WORKSPACE_BUDGET` (period plus limit / available / held / spent amounts) or `WORKSPACE_RUN_CAP` (a per-run limit amount). A `BLOCKED` run is **terminal** — it will not proceed on its own, so polling stops. **Tell the user the run was blocked by a workspace control and that they can pause or modify these controls from the dashboard at https://app.monid.ai before retrying.**
 

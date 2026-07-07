@@ -151,6 +151,8 @@ export interface RunDetailResponse {
   input?: EndpointInput;
   output?: Record<string, unknown>;
   error?: RunError | string;
+  /** Whether the run can currently be stopped via `monid runs stop`. Present on run detail. */
+  stoppable?: boolean;
   providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
@@ -210,6 +212,14 @@ export interface BalanceResponse {
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
+}
+
+// --- Public Telemetry ---
+
+export interface SetupTelemetryRequest {
+  source: 'cli';
+  client?: string;
+  email?: string;
 }
 
 // --- API Error ---
