@@ -8,6 +8,8 @@ import type {
   EndpointInput,
   InspectResponse,
   MonetaryValue,
+  Price,
+  PriceAmount,
   RunControl,
   RunError,
   RunDetailResponse,
@@ -70,8 +72,12 @@ export function formatInspectResult(data: InspectResponse): void {
     `  Type:   ${data.price.type}\n` +
     `  Amount: ${formatPriceCompact(data.price)}`,
   );
-  if (data.price.flatFee) {
-    console.log(`  Flat fee: $${data.price.flatFee}`);
+  const flatFee = amountValue(data.price.flatFee);
+  if (flatFee) {
+    console.log(`  Flat fee: $${flatFee}`);
+  }
+  if (data.price.type === 'PER_UNIT_MATRIX' && data.price.variants?.length) {
+    console.log(`  Variants: ${data.price.variants.length} (price varies by input)`);
   }
 
   if (data.price.notes?.length) {
@@ -383,8 +389,41 @@ function formatHttpStatus(status: number | undefined): string {
   return chalk.red(s);
 }
 
-function formatPriceCompact(p: { type: string; amount: number; currency: string }): string {
-  return `$${p.amount}/${p.type === 'PER_CALL' ? 'call' : 'result'}`;
+/** Dollar value from either price-amount wire shape (old bare number | new
+ *  {value, currency}) — see `PriceAmount` in api/types. */
+function amountValue(a: PriceAmount | undefined): number | undefined {
+  if (a == null) return undefined;
+  return typeof a === 'number' ? a : a.value;
+}
+
+/** "minute", "5 minutes", "month" — human unit from a {unit, count} period. */
+function unitLabel(p?: { unit: string; count: number }): string {
+  if (!p) return 'unit';
+  const u = p.unit.toLowerCase();
+  return p.count === 1 ? u : `${p.count} ${u}s`;
+}
+
+function formatPriceCompact(p: Price): string {
+  const amt = amountValue(p.amount);
+  if (amt == null) return chalk.gray('n/a');
+  switch (p.type) {
+    case 'PER_CALL':
+      return `$${amt}/call`;
+    case 'PER_RESULT': {
+      const flat = amountValue(p.flatFee);
+      return `$${amt}/result${flat ? ` + $${flat} flat` : ''}`;
+    }
+    case 'BY_PERIOD':
+      return `$${amt}/${unitLabel(p.period)}`;
+    case 'METERED':
+      return `$${amt}/${unitLabel(p.per)}`;
+    case 'PER_UNIT_MATRIX':
+      // `amount` carries the default/"from" price; the full table rides on
+      // selectors/variants.
+      return `from $${amt}`;
+    default:
+      return `$${amt}`;
+  }
 }
 
 function truncate(str: string, maxLen: number): string {

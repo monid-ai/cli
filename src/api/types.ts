@@ -1,10 +1,37 @@
 // --- Shared types ---
 
+/**
+ * One money amount on the price wire. Current backends send the nested
+ * `{ value, currency }` shape (same as every other money field — cost,
+ * billing); pre-2026-07 backends sent a bare dollar number with a top-level
+ * `currency`. The CLI accepts BOTH so it renders correctly against any
+ * backend version (rendering `[object Object]` was the failure mode when
+ * only the old shape was understood).
+ */
+export type PriceAmount = number | { value: number; currency: string };
+
+/** A `{unit, count}` billing period — BY_PERIOD's `period`, METERED's `per`. */
+export interface PricePeriod {
+  unit: string;
+  count: number;
+}
+
 export interface Price {
-  type: 'PER_CALL' | 'PER_RESULT';
-  amount: number;
-  flatFee?: number;
-  currency: string;
+  /** PER_CALL | PER_RESULT | BY_PERIOD | METERED | PER_UNIT_MATRIX (open for
+   *  forward compat — unknown types render as a bare amount). */
+  type: string;
+  amount: PriceAmount;
+  flatFee?: PriceAmount;
+  /** Old wire shape only (new shape carries currency inside each amount). */
+  currency?: string;
+  /** BY_PERIOD: the recurring billing period (e.g. {unit:"MONTH",count:1}). */
+  period?: PricePeriod;
+  /** METERED: the metering quantum (e.g. {unit:"MINUTE",count:1}) — the unit
+   *  `billedUnits` counts. */
+  per?: PricePeriod;
+  /** PER_UNIT_MATRIX: displayable price table. */
+  selectors?: { label: string; key: string; in: string }[];
+  variants?: { when: Record<string, string | number>; amount: PriceAmount; label?: string }[];
   notes?: string[];
 }
 
