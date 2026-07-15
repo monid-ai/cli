@@ -224,7 +224,7 @@ export function formatKeysList(
     return;
   }
 
-  const headers = ['Label', 'Key', 'Added At'];
+  const headers = ['Label', 'Key', 'Added At', 'Active'];
   const rows = entries.map(([label, cred]) => [
     label,
     `${cred.prefix}*******`,
@@ -431,15 +431,26 @@ function truncate(str: string, maxLen: number): string {
   return str.slice(0, maxLen - 3) + '...';
 }
 
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
+/**
+ * Render an ISO timestamp for display: local date AND time. Including the
+ * time is what makes local-timezone rendering unambiguous — a date-only
+ * render of a UTC timestamp silently shifts the calendar day for anyone
+ * west of UTC (e.g. `2026-07-14T02:00Z` showed as "Jul 13, 2026").
+ *
+ * `new Date(garbage)` never throws — it yields an Invalid Date — so the
+ * guard is `Number.isNaN(getTime())` (a try/catch here is dead code);
+ * unparseable input falls back to the raw string.
+ *
+ * Exported for tests.
+ */
+export function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
