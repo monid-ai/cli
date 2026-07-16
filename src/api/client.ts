@@ -3,13 +3,20 @@ import { MonidError } from '../utils/error.js';
 import type {
   BalanceResponse,
   DiscoverResponse,
+  ExternalResourceDetail,
   InspectResponse,
+  Resource,
+  ResourceEventsResponse,
+  ResourceListResponse,
+  ResourceReleaseResponse,
   RunResponse,
   RunDetailResponse,
   RunStopResponse,
   SetupTelemetryRequest,
   RunsListResponse,
   ApiErrorResponse,
+  WhoamiResponse,
+  WorkspaceListResponse,
 } from './types.js';
 
 export class MonidPublicAPI {
@@ -140,6 +147,70 @@ export class MonidAPI {
     if (cursor) params.set('cursor', cursor);
     const qs = params.toString();
     return this.request('GET', `/v1/runs${qs ? `?${qs}` : ''}`);
+  }
+
+  // --- Auth ---
+
+  async whoami(): Promise<WhoamiResponse> {
+    return this.request('GET', '/v1/auth/whoami');
+  }
+
+  async listWorkspaces(): Promise<WorkspaceListResponse> {
+    return this.request('GET', '/v1/auth/workspaces');
+  }
+
+  // --- Resources ---
+
+  async listResources(opts?: {
+    provider?: string;
+    resourceType?: string;
+    state?: string;
+    limit?: number;
+    cursor?: string;
+  }): Promise<ResourceListResponse> {
+    const params = new URLSearchParams();
+    if (opts?.provider) params.set('provider', opts.provider);
+    if (opts?.resourceType) params.set('resourceType', opts.resourceType);
+    if (opts?.state) params.set('state', opts.state);
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts?.cursor) params.set('cursor', opts.cursor);
+    const qs = params.toString();
+    return this.request('GET', `/v1/resources${qs ? `?${qs}` : ''}`);
+  }
+
+  async getResource(resourceId: string): Promise<Resource> {
+    return this.request('GET', `/v1/resources/${encodeURIComponent(resourceId)}`);
+  }
+
+  async getResourceExternal(
+    resourceId: string,
+    kind: string,
+  ): Promise<ExternalResourceDetail> {
+    return this.request(
+      'GET',
+      `/v1/resources/${encodeURIComponent(resourceId)}/external/${encodeURIComponent(kind)}`,
+    );
+  }
+
+  async listResourceEvents(
+    resourceId: string,
+    opts?: { limit?: number; cursor?: string },
+  ): Promise<ResourceEventsResponse> {
+    const params = new URLSearchParams();
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts?.cursor) params.set('cursor', opts.cursor);
+    const qs = params.toString();
+    return this.request(
+      'GET',
+      `/v1/resources/${encodeURIComponent(resourceId)}/events${qs ? `?${qs}` : ''}`,
+    );
+  }
+
+  async releaseResource(resourceId: string): Promise<ResourceReleaseResponse> {
+    return this.request(
+      'POST',
+      `/v1/resources/${encodeURIComponent(resourceId)}/release`,
+    );
   }
 }
 

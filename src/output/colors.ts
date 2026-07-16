@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { RunStatus } from '../api/types.js';
+import type { ResourceState, RunStatus } from '../api/types.js';
 
 export function success(message: string): void {
   console.log(`${chalk.green('✓')} ${message}`);
@@ -35,6 +35,27 @@ export function statusBadge(status: RunStatus): string {
       return chalk.red(status);
     default:
       return status;
+  }
+}
+
+export function resourceStateBadge(state: ResourceState): string {
+  switch (state) {
+    case 'READY':
+      return chalk.cyan(state);
+    case 'PROVISIONING':
+      return chalk.yellow(state);
+    case 'ACTIVE':
+      return chalk.green(state);
+    case 'EXPIRING':
+      return chalk.yellow(state);
+    case 'SUSPENDED':
+      return chalk.red(state);
+    case 'RELEASED':
+      return chalk.gray(state);
+    case 'PROVISION_FAILED':
+      return chalk.red(state);
+    default:
+      return state;
   }
 }
 

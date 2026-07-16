@@ -8,7 +8,33 @@
  * backend version (rendering `[object Object]` was the failure mode when
  * only the old shape was understood).
  */
-export type PriceAmount = number | { value: number; currency: string };
+export type MonetaryAmount = { value: number; currency: string };
+
+/**
+ * A price `amount` on the wire. Historically a bare dollar number or a nested
+ * `{ value, currency }`. Newer backends may send a *nested price structure*
+ * where `amount` is itself a priced sub-expression — e.g. a `PER_UNIT_MATRIX`
+ * whose `amount` is a `PER_TOKEN` price (`{ type, amount, per }`). The type is
+ * therefore recursive: any `amount` may be a number, a `{value,currency}`, or
+ * another `NestedPrice`. Renderers must recurse and degrade gracefully for
+ * unknown shapes (never emit `[object Object]`).
+ */
+export type PriceAmount = number | MonetaryAmount | NestedPrice;
+
+/**
+ * A priced sub-expression carried inside a `PriceAmount`. Shares the shape of
+ * `Price` (type + amount + optional modifiers) but is intentionally minimal and
+ * open for forward compat. `per` is a plain divisor count (e.g. 1_000_000 for
+ * "per 1M tokens"), distinct from the `{unit,count}` `PricePeriod`.
+ */
+export interface NestedPrice {
+  type: string;
+  amount: PriceAmount;
+  /** Divisor for per-unit pricing, e.g. `1000000` → "per 1M". */
+  per?: number;
+  flatFee?: PriceAmount;
+  period?: PricePeriod;
+}
 
 /** A `{unit, count}` billing period — BY_PERIOD's `period`, METERED's `per`. */
 export interface PricePeriod {
@@ -238,6 +264,160 @@ export interface BalanceResponse {
   };
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
+  usage?: Usage;
+}
+
+// --- Auth ---
+
+export interface AuthUser {
+  userId: string;
+  username: string;
+  email?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthWorkspace {
+  workspaceId: string;
+  name: string;
+  slug: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhoamiResponse {
+  user: AuthUser;
+  /** Absent when the caller is not part of a workspace. */
+  workspace?: AuthWorkspace;
+  hints?: Hints;
+  usage?: Usage;
+}
+
+export interface WorkspaceListItem {
+  workspaceId: string;
+  slug: string | null;
+}
+
+export interface WorkspaceListResponse {
+  workspaces: WorkspaceListItem[];
+  hints?: Hints;
+  usage?: Usage;
+}
+
+// --- Resources ---
+
+export type ResourceState =
+  | 'READY'
+  | 'PROVISIONING'
+  | 'ACTIVE'
+  | 'EXPIRING'
+  | 'SUSPENDED'
+  | 'RELEASED'
+  | 'PROVISION_FAILED';
+
+/** Summary of an external link on a resource (from `Resource.externalResources`). */
+export interface ExternalResourceSummary {
+  kind: string;
+  displayName: string;
+  label?: string;
+}
+
+/** Live external detail fetched from `/v1/resources/{id}/external/{kind}`. */
+export interface ExternalResourceDetail {
+  kind: string;
+  displayName: string;
+  label?: string;
+  data: Record<string, unknown>;
+}
+
+export interface ResourceRenewal {
+  price: Price;
+  /** How long before `currentPeriodEnd` charging starts. */
+  renewLead: { unit: string; count: number };
+  startedAt: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  renewAttemptAt: string;
+  cycle: number;
+  lastAttempt?: {
+    at: string;
+    outcome: 'SUCCEEDED' | 'FAILED';
+    reason?: string;
+  };
+  cancelledAt?: string;
+}
+
+export interface Resource {
+  resourceId: string;
+  provider: string;
+  resourceSlug: string;
+  resourceType: string;
+  externalId: string;
+  identifier: string;
+  state: ResourceState;
+  provisionedBy: string;
+  releasedBy?: string;
+  renewal?: ResourceRenewal;
+  createdAt: string;
+  updatedAt: string;
+  releasedAt?: string;
+  releaseReasonCode?: string;
+  releaseReason?: string;
+  phoneNumber?: string;
+  country?: string;
+  numberType?: string;
+  externalResources?: ExternalResourceSummary[];
+  syncedAt?: string;
+  hints?: Hints;
+  usage?: Usage;
+}
+
+/** `resources get` output: the base resource plus joined live external detail. */
+export interface ResourceWithExternal extends Resource {
+  /** Live external detail, fetched per `externalResources[].kind` and joined in. */
+  externalDetails?: ResourceExternalJoin[];
+}
+
+/** One joined external link — either its live detail or a per-link fetch error. */
+export interface ResourceExternalJoin {
+  kind: string;
+  displayName: string;
+  label?: string;
+  data?: Record<string, unknown>;
+  /** Present when the live fetch failed (e.g. provider unreachable). */
+  error?: string;
+}
+
+export interface ResourceListResponse {
+  items: Resource[];
+  cursor?: string | null;
+  hints?: Hints;
+  usage?: Usage;
+}
+
+export interface ResourceEvent {
+  eventId: string;
+  type: string;
+  cycle?: number;
+  amount?: { value: number; currency: string };
+  reason?: string;
+  at: string;
+}
+
+export interface ResourceEventsResponse {
+  items: ResourceEvent[];
+  cursor?: string | null;
+  hints?: Hints;
+  usage?: Usage;
+}
+
+export interface ResourceReleaseResponse {
+  resourceId: string;
+  state: 'EXPIRING';
+  message: string;
+  hints?: Hints;
   usage?: Usage;
 }
 

@@ -6,6 +6,8 @@ import { discoverCommand } from './commands/discover.js';
 import { inspectCommand } from './commands/inspect.js';
 import { runCommand } from './commands/run.js';
 import { runsCommand } from './commands/runs/index.js';
+import { resourcesCommand } from './commands/resources/index.js';
+import { whoamiCommand } from './commands/whoami.js';
 import { setupCommand } from './commands/setup.js';
 
 const cli = new Command()
@@ -21,6 +23,8 @@ const cli = new Command()
   .command('inspect', inspectCommand)
   .command('run', runCommand)
   .command('runs', runsCommand)
+  .command('resources', resourcesCommand)
+  .command('whoami', whoamiCommand)
   .command('setup', setupCommand)
   .command('balance', balanceCommand)
   .command('keys', keysCommand);
