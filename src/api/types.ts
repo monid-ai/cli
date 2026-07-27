@@ -22,16 +22,24 @@ export type MonetaryAmount = { value: number; currency: string };
 export type PriceAmount = number | MonetaryAmount | NestedPrice;
 
 /**
- * A priced sub-expression carried inside a `PriceAmount`. Shares the shape of
- * `Price` (type + amount + optional modifiers) but is intentionally minimal and
- * open for forward compat. `per` is a plain divisor count (e.g. 1_000_000 for
- * "per 1M tokens"), distinct from the `{unit,count}` `PricePeriod`.
+ * A priced sub-expression carried inside a `PriceAmount` — on the current
+ * wire this is a LEAF price (`PER_CALL | PER_RESULT | METERED |
+ * PER_TOKEN`), THE SAME shape wherever it appears: a `PER_UNIT_MATRIX`
+ * cell (`variants[].price`), a `TIERED` tier (`tiers[].price`), and the
+ * top-level `default` of both. Intentionally minimal and open for forward
+ * compat.
+ *
+ * `per` is a plain divisor count for PER_TOKEN (e.g. 1_000_000 → "per 1M
+ * tokens") but the `{unit,count}` `PricePeriod` for a METERED leaf —
+ * renderers must handle both.
  */
 export interface NestedPrice {
   type: string;
   amount: PriceAmount;
-  /** Divisor for per-unit pricing, e.g. `1000000` → "per 1M". */
-  per?: number;
+  /** PER_TOKEN: divisor count (1000000 → "per 1M"); METERED: {unit,count}. */
+  per?: number | PricePeriod;
+  /** PER_TOKEN: the counted unit — "token" (default) or "character". */
+  unit?: string;
   flatFee?: PriceAmount;
   period?: PricePeriod;
 }
@@ -42,10 +50,40 @@ export interface PricePeriod {
   count: number;
 }
 
+/** Gate / cell coordinates — request dot-paths to expected values. */
+export type PriceWhen = Record<string, string | number | boolean>;
+
+/** One PER_UNIT_MATRIX row. Current wire carries the typed leaf under
+ *  `price`; pre-2026-07 backends sent it under `amount` — accept BOTH. */
+export interface PriceVariant {
+  when: PriceWhen;
+  /** Current wire: the typed leaf price for this cell. */
+  price?: PriceAmount;
+  /** Old wire shape only. */
+  amount?: PriceAmount;
+  label?: string;
+}
+
+/** One TIERED gated add-on tier — SUMMED on top of the price `default`
+ *  when its `when` gate matches the request. */
+export interface PriceTier {
+  label: string;
+  when: PriceWhen;
+  /** WHERE the metered quantity lives; absent ⇒ quantity 1. */
+  selector?: { label: string; key: string; in: string };
+  /** The add-on's leaf price (× the metered quantity). */
+  price: PriceAmount;
+}
+
 export interface Price {
-  /** PER_CALL | PER_RESULT | BY_PERIOD | METERED | PER_UNIT_MATRIX (open for
-   *  forward compat — unknown types render as a bare amount). */
+  /** PER_CALL | PER_RESULT | BY_PERIOD | METERED | PER_UNIT_MATRIX |
+   *  TIERED (open for forward compat — unknown types render as a bare
+   *  amount). */
   type: string;
+  /** Current wire: ALWAYS plain money — PER_UNIT_MATRIX: the cheapest
+   *  published cell (a "from"); TIERED: the `default` leaf's nominal
+   *  amount ($0 when the card has none). Old wire could carry a nested
+   *  price here — renderers recurse either way. */
   amount: PriceAmount;
   flatFee?: PriceAmount;
   /** Old wire shape only (new shape carries currency inside each amount). */
@@ -55,9 +93,17 @@ export interface Price {
   /** METERED: the metering quantum (e.g. {unit:"MINUTE",count:1}) — the unit
    *  `billedUnits` counts. */
   per?: PricePeriod;
+  /** TIERED: the typed DEFAULT leaf (the card's always-on base charge) —
+   *  its `type` names the unit ("per call" / "per result" / a token rate);
+   *  absent ⇒ the price is entirely gate-dependent ("varies"). A
+   *  PER_UNIT_MATRIX has no default on the current wire; older backends
+   *  sent one as its unmatched fallback, so renderers still tolerate it. */
+  default?: NestedPrice;
   /** PER_UNIT_MATRIX: displayable price table. */
   selectors?: { label: string; key: string; in: string }[];
-  variants?: { when: Record<string, string | number>; amount: PriceAmount; label?: string }[];
+  variants?: PriceVariant[];
+  /** TIERED: gated add-on tiers, SUMMED on top of `default` when matched. */
+  tiers?: PriceTier[];
   notes?: string[];
 }
 

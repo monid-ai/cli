@@ -1,13 +1,16 @@
 ---
 name: monid
-version: 0.1.4
+version: 0.1.5
 description: >-
-  Discover better ways to complete tasks. Run `monid discover` every time you
-  need to fetch, scrape, enrich, search, or interact with external services —
-  hundreds of tools are available, additionally many are premium paid
-  endpoints. Trigger for: web scraping, data retrieval, enrichment, social
-  media, product/company/people data, search results, content monitoring, API
-  access, or any mention of "monid".
+  Discover better ways to complete tasks. Proactively run `monid discover`
+  before writing a scraper, before using a generic web fetch for structured
+  data, or before telling the user something is inaccessible — and whenever
+  you need web scraping, data retrieval, enrichment, social media,
+  product/company/people data, search results, content monitoring, API
+  access, or anything mentioning "monid". Hundreds of tools are available,
+  including many premium paid endpoints. Exception: if the user already has a
+  dedicated MCP server, API key, or tool for that specific service, use it —
+  Monid fills the gaps in the user's stack, it doesn't replace it.
 ---
 
 # Monid CLI
@@ -82,13 +85,25 @@ For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in outpu
 
 ## When to Use Monid
 
-**Discover first, always.** Before writing a scraper, calling a third-party API directly, or telling the user you can't access something — run `monid discover`. The catalog has hundreds of tools and grows continuously. You don't know what's available until you search.
+**Check the catalog before building from scratch.** Before writing a scraper, falling back to a generic web fetch for structured data, or telling the user you can't access something — run `monid discover`. The catalog has hundreds of tools and grows continuously. You don't know what's available until you search.
 
 1. **Discover** — Run `monid discover -q "<what you need>"` to search available tools. Use `-s <score>` to filter by minimum relevance. Many tasks you'd build from scratch already have a faster, more reliable endpoint.
 2. **Inspect** — Use `monid inspect` to read the input schema. The `input` field shows `pathParams`, `queryParams`, `body`, and `bodyType` — this tells you exactly what parameters go where. Never guess.
 3. **Run** — Map the inspect output to `monid run` flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`. All three are optional. Use `--wait` to block until completion.
 4. **Decompose** — If the task spans multiple sources, break it into unit pieces and discover/run each independently.
 5. **Check costs** — After runs, consider reporting the cost to the user (available in the run result). Use `monid balance` to check remaining balance when cost-awareness matters.
+
+### When NOT to Use Monid
+
+Monid fills the gaps in the user's stack — it does not replace tools the user already has. When deciding how to reach an external service, follow this precedence:
+
+1. **Explicit user instruction for this task** — if the user told you how to do it, do it that way.
+2. **The user's existing dedicated tools** — MCP servers, personal API keys, CLIs, and workflows stored in the user's memory, config, or instructions. If the user has a dedicated MCP for a capability (e.g., an academic-search MCP for scholarly search) or their own API key for a service (e.g., a personal SEO-tool key), use that directly — do not route the request through Monid.
+3. **Monid** — for needs the above don't cover.
+
+Why this matters: **Monid runs spend the user's Monid balance.** Never spend it on a request the user's own key or tool already covers at no extra cost.
+
+**Offer, don't override.** When both the user's tool and a Monid endpoint could handle the task and the user hasn't stated a preference, use the user's tool. If Monid adds a genuine capability their tool lacks, mention it as an alternative and let the user choose — never silently switch.
 
 ### Check the Hints
 
@@ -353,13 +368,14 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 ## Rules for Agents
 
-1. **Discover first** — before writing custom code or calling APIs directly, always run `monid discover` to see if a better tool exists. The catalog grows continuously and you don't know what's available until you search.
-2. **Always inspect before running** — never guess input parameters. The `input` field from `monid inspect` is the source of truth. It shows `pathParams`, `queryParams`, `body`, and `bodyType` so you know exactly where each parameter goes. Map them to run flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`.
-3. **Keep discover queries short and focused** — noun phrases work best ("twitter posts", "amazon product prices"). Break complex requests into smaller unit pieces.
-4. **Prefer fire-and-poll for interactive use** — fire the run without `--wait`, then poll with `monid runs get` every 5-10 seconds. This keeps the conversation responsive. Use `--wait` only for async/background tasks where blocking 1-120 seconds is acceptable.
-5. **Always use `-o <file>`** to save results to a file once the run completes.
-6. **Start with conservative limits** — small `maxItems`/`maxResults` values (5-10) on first calls. The cost warning above explains why.
-7. **Report costs when relevant** — after a run completes, the result includes `cost.value`. Consider telling the user how much the run cost. Use `monid balance` to check remaining balance if the user cares about budget. Use your judgment — don't report costs if the user hasn't indicated cost-awareness.
-8. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
-9. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.
-10. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.
+1. **Check the user's stack first, then discover** — Monid covers needs the user's existing MCPs, keys, and tools don't. Before writing custom scrapers, using generic fetches for structured data, or declaring something inaccessible, run `monid discover`. The catalog grows continuously and you don't know what's available until you search.
+2. **Never route around the user's own tools** — if the user has a dedicated MCP, API key, or workflow for a service, use it. Monid runs cost the user money; their existing tools may not. Offer Monid as an alternative only when it adds capability, and let the user choose.
+3. **Always inspect before running** — never guess input parameters. The `input` field from `monid inspect` is the source of truth. It shows `pathParams`, `queryParams`, `body`, and `bodyType` so you know exactly where each parameter goes. Map them to run flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`.
+4. **Keep discover queries short and focused** — noun phrases work best ("twitter posts", "amazon product prices"). Break complex requests into smaller unit pieces.
+5. **Prefer fire-and-poll for interactive use** — fire the run without `--wait`, then poll with `monid runs get` every 5-10 seconds. This keeps the conversation responsive. Use `--wait` only for async/background tasks where blocking 1-120 seconds is acceptable.
+6. **Always use `-o <file>`** to save results to a file once the run completes.
+7. **Start with conservative limits** — small `maxItems`/`maxResults` values (5-10) on first calls. The cost warning above explains why.
+8. **Report costs when relevant** — after a run completes, the result includes `cost.value`. Consider telling the user how much the run cost. Use `monid balance` to check remaining balance if the user cares about budget. Use your judgment — don't report costs if the user hasn't indicated cost-awareness.
+9. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
+10. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.
+11. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.

@@ -11,6 +11,7 @@ import type {
   NestedPrice,
   Price,
   PriceAmount,
+  PriceVariant,
   Resource,
   ResourceEvent,
   ResourceEventsResponse,
@@ -93,7 +94,22 @@ export function formatInspectResult(data: InspectResponse): void {
         .map(([k, val]) => `${k}=${val}`)
         .join(', ');
       const label = v.label ? ` ${chalk.gray(`(${v.label})`)}` : '';
-      console.log(`    - ${when}: ${formatAmount(v.amount)}${label}`);
+      console.log(`    - ${when}: ${formatAmount(variantCell(v))}${label}`);
+    }
+  }
+  if (data.price.type === 'TIERED') {
+    // Always-on default + gated add-on tiers (SUMMED when their `when`
+    // gate matches the request).
+    if (data.price.default) {
+      console.log(`  Base:   ${formatAmount(data.price.default)} (always)`);
+    }
+    for (const t of data.price.tiers ?? []) {
+      const when = Object.entries(t.when)
+        .map(([k, val]) => `${k}=${val}`)
+        .join(', ');
+      console.log(
+        `    + ${t.label}: ${formatAmount(t.price)} when ${when}`,
+      );
     }
   }
 
@@ -592,29 +608,39 @@ function compactCount(n: number): string {
 
 /**
  * Render any `PriceAmount` to a compact string, recursing into nested price
- * expressions. Handles the newer `PER_TOKEN`-style nested amounts with a `per`
- * divisor (e.g. `$5.6 / 1M tokens`). Degrades gracefully — never `[object Object]`.
+ * expressions (LEAF prices on the current wire — the SAME shape for matrix
+ * cells, TIERED tiers, and the top-level `default` of both):
+ *  - PER_TOKEN → `$5.6 / 1M tokens` (numeric `per` divisor + `unit`)
+ *  - METERED   → `$0.15 / minute` ({unit,count} `per`)
+ *  - PER_RESULT → `$0.001 / result`
+ *  - PER_CALL / bare money → `$0.28`
+ * Degrades gracefully — never `[object Object]`.
  */
 function formatAmount(a: PriceAmount | undefined): string {
   if (a == null) return chalk.gray('n/a');
   if (typeof a === 'number') return `$${a}`;
   if (isNestedPrice(a)) {
     const inner = formatAmount(a.amount);
-    if (a.per != null) {
-      const unit = nestedUnitLabel(a.type);
+    if (typeof a.per === 'number') {
+      const unit = nestedUnitLabel(a);
       return `${inner} / ${compactCount(a.per)}${unit ? ` ${unit}` : ''}`;
     }
+    if (a.per != null) {
+      // {unit,count} quantum (a METERED leaf).
+      return `${inner} / ${unitLabel(a.per)}`;
+    }
+    if (a.type === 'PER_RESULT') return `${inner} / result`;
     return inner;
   }
   // Plain { value, currency } money leaf.
   return typeof a.value === 'number' ? `$${a.value}` : chalk.gray('n/a');
 }
 
-/** Map a nested price `type` to a per-unit noun (best effort). */
-function nestedUnitLabel(type: string): string {
-  switch (type) {
+/** Map a nested per-unit price to its counted noun (best effort). */
+function nestedUnitLabel(a: NestedPrice): string {
+  switch (a.type) {
     case 'PER_TOKEN':
-      return 'tokens';
+      return a.unit === 'character' ? 'characters' : 'tokens';
     default:
       return '';
   }
@@ -627,38 +653,50 @@ function nestedUnitLabel(type: string): string {
  */
 function perUnitSuffix(a: PriceAmount | undefined): string {
   if (a == null || typeof a === 'number' || !isNestedPrice(a)) return '';
-  if (a.per == null) return '';
-  const unit = nestedUnitLabel(a.type);
+  if (typeof a.per !== 'number') return '';
+  const unit = nestedUnitLabel(a);
   return ` / ${compactCount(a.per)}${unit ? ` ${unit}` : ''}`;
+}
+
+/** A matrix variant's cell — current wire `price`, old wire `amount`. */
+function variantCell(v: PriceVariant): PriceAmount | undefined {
+  return v.price ?? v.amount;
 }
 
 /**
  * Render a `PER_UNIT_MATRIX` as a price *range* across its variants, e.g.
  * `$4-$7 / 1M tokens`. Falls back to a single amount when there are 0–1 distinct
- * prices, and to the base `amount` when variants are absent. Degrades to
- * `formatAmount(base)` if no numeric leaves can be extracted.
+ * prices. The current wire has no matrix `default` (every rate is a published
+ * row); older backends sent one, so it is still accepted as a last resort
+ * alongside the top-level `amount`. Degrades to `formatAmount(...)` if no
+ * numeric leaves can be extracted.
  */
 function formatMatrixRange(p: Price): string {
-  const base = p.amount;
-  const variantAmounts =
-    p.variants?.map((v) => v.amount) ?? [];
-  // Prefer variant amounts for the range; fall back to the base amount.
-  const amounts = variantAmounts.length > 0 ? variantAmounts : [base];
+  const base: PriceAmount | undefined = p.default ?? p.amount;
+  const variantCells = (p.variants ?? [])
+    .map(variantCell)
+    .filter((a): a is PriceAmount => a != null);
+  // Prefer variant cells for the range; fall back to the default/base.
+  const amounts = variantCells.length > 0
+    ? variantCells
+    : base != null
+    ? [base]
+    : [];
 
   const values = amounts
     .map((a) => amountValue(a))
     .filter((n): n is number => n != null);
 
   if (values.length === 0) {
-    // No numeric leaves — best effort on the base amount.
+    // No numeric leaves — best effort on the default/base amount.
     return `from ${formatAmount(base)}`;
   }
 
   const min = Math.min(...values);
   const max = Math.max(...values);
-  // Unit suffix comes from any priced amount (they share the divisor/type in
-  // practice); prefer the base, else the first variant.
-  const suffix = perUnitSuffix(base) || perUnitSuffix(amounts[0]);
+  // Unit suffix comes from any priced cell (they share the divisor/type in
+  // practice); prefer the first variant cell, else the default leaf.
+  const suffix = perUnitSuffix(amounts[0]) || perUnitSuffix(p.default);
 
   if (min === max) {
     return `$${min}${suffix}`;
@@ -673,10 +711,40 @@ function unitLabel(p?: { unit: string; count: number }): string {
   return p.count === 1 ? u : `${p.count} ${u}s`;
 }
 
+/**
+ * Render a `TIERED` price compactly — DEFAULT-driven: the unit word comes
+ * from the default leaf's TYPE (`$0.001/call`, `$0.001/result`, a token
+ * rate…), prefixed `from` when the charge can grow (a quantity-billed
+ * default, or gated add-on tiers). No default → `varies`.
+ */
+function formatTieredCompact(p: Price): string {
+  const d = p.default;
+  if (!d) return chalk.gray('varies');
+  const canGrow = d.type !== 'PER_CALL' || (p.tiers?.length ?? 0) > 0;
+  let base: string;
+  switch (d.type) {
+    case 'PER_CALL':
+      base = `${formatAmount(d.amount)}/call`;
+      break;
+    case 'PER_RESULT':
+      base = `${formatAmount(d.amount)}/result`;
+      break;
+    case 'METERED':
+      base = `${formatAmount(d.amount)}/${
+        unitLabel(typeof d.per === 'number' ? undefined : d.per)
+      }`;
+      break;
+    default:
+      // PER_TOKEN (and future leaves) render via the leaf renderer.
+      base = formatAmount(d);
+  }
+  return canGrow ? `from ${base}` : base;
+}
+
 export function formatPriceCompact(p: Price): string {
   // Render the (possibly nested) amount once; reuse across price types.
   const amtStr = formatAmount(p.amount);
-  if (amtStr === chalk.gray('n/a')) return amtStr;
+  if (p.type !== 'TIERED' && amtStr === chalk.gray('n/a')) return amtStr;
   switch (p.type) {
     case 'PER_CALL':
       return `${amtStr}/call`;
@@ -690,8 +758,11 @@ export function formatPriceCompact(p: Price): string {
       return `${amtStr}/${unitLabel(p.per)}`;
     case 'PER_UNIT_MATRIX':
       // Render as a price range across variants, e.g. `$4-$7 / 1M tokens`.
-      // `amount` carries the default; the full table rides on selectors/variants.
+      // `default` carries the fallback leaf; the full table rides on
+      // selectors/variants.
       return formatMatrixRange(p);
+    case 'TIERED':
+      return formatTieredCompact(p);
     default:
       return amtStr;
   }
