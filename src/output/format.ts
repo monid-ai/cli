@@ -24,6 +24,7 @@ import type {
   RunError,
   RunDetailResponse,
   RunsListResponse,
+  SpendReport,
   WhoamiResponse,
 } from '../api/types.js';
 import { resourceStateBadge } from './colors.js';
@@ -401,6 +402,67 @@ export function formatBalance(data: BalanceResponse): void {
   console.log();
   console.log(`  Balance: ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
   formatHints(data.hints ?? data.usage);
+  console.log();
+}
+
+// --- Spend ---
+
+export function formatSpendReport(report: SpendReport): void {
+  if (report.runs === 0) {
+    console.log(chalk.gray('No runs found.'));
+    return;
+  }
+
+  const range =
+    report.firstRunAt && report.lastRunAt
+      ? chalk.gray(` · ${formatDate(report.firstRunAt)} — ${formatDate(report.lastRunAt)}`)
+      : '';
+  console.log();
+  console.log(
+    `  Total spent: ${chalk.green(`$${report.spend.toFixed(2)}`)} ${report.currency}` + range,
+  );
+  console.log();
+
+  console.log(chalk.bold('By provider'));
+  renderTable(
+    ['Provider', 'Runs', 'Spend'],
+    report.providers.map((b) => [
+      b.providerName || b.provider,
+      String(b.runs),
+      `$${b.spend.toFixed(4)}`,
+    ]),
+    { columns: { 1: { align: 'right' }, 2: { align: 'right' } } },
+  );
+
+  console.log();
+  console.log(chalk.bold('Top endpoints'));
+  renderTable(
+    ['Provider', 'Endpoint', 'Runs', 'Spend'],
+    report.topEndpoints.map((b) => [
+      b.providerName || b.provider,
+      b.endpoint ?? '-',
+      String(b.runs),
+      `$${b.spend.toFixed(4)}`,
+    ]),
+    { columns: { 2: { align: 'right' }, 3: { align: 'right' } } },
+  );
+
+  console.log();
+  console.log(chalk.bold('Top runs'));
+  renderTable(
+    ['Run ID', 'Endpoint', 'Results', 'Cost'],
+    report.topRuns.map((r) => [
+      chalk.bold(r.runId),
+      r.endpoint,
+      r.resultCount !== undefined ? String(r.resultCount) : '-',
+      r.cost ? `$${r.cost.value.toFixed(4)}` : '-',
+    ]),
+    { columns: { 2: { align: 'right' }, 3: { align: 'right' } } },
+  );
+
+  console.log();
+  const failedLine = `Failed runs: ${report.failedRuns} · billed $${report.failedSpend.toFixed(2)}`;
+  console.log(`  ${report.failedSpend > 0 ? chalk.yellow(failedLine) : chalk.gray(failedLine)}`);
   console.log();
 }
 
