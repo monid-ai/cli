@@ -80,8 +80,8 @@ For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in outpu
 
 **Check the catalog before building from scratch.** Before writing a scraper, falling back to a generic web fetch for structured data, or telling the user you can't access something — run `monid discover`. The catalog has hundreds of tools and grows continuously. You don't know what's available until you search.
 
-1. **Discover** — Run `monid discover -q "<what you need>"` to search available tools. Use `-s <score>` to filter by minimum relevance. Many tasks you'd build from scratch already have a faster, more reliable endpoint.
-2. **Inspect** — Use `monid inspect` to read the input schema. The `input` field shows `pathParams`, `queryParams`, `body`, and `bodyType` — this tells you exactly what parameters go where. Never guess.
+1. **Discover** — Run `monid discover -q "<what you need>"` to search available tools. Use `-s <score>` to filter by minimum relevance. Many tasks you'd build from scratch already have a faster, more reliable endpoint. The `Health` column reports a measured status and typical run time — see [Endpoint Health](#endpoint-health).
+2. **Inspect** — Use `monid inspect` to read the input schema. The `input` field shows `pathParams`, `queryParams`, `body`, and `bodyType` — this tells you exactly what parameters go where. Never guess. The `Health` section adds the tail run time.
 3. **Run** — Map the inspect output to `monid run` flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`. All three are optional. Use `--wait` to block until completion.
 4. **Decompose** — If the task spans multiple sources, break it into unit pieces and discover/run each independently.
 5. **Check costs** — After runs, consider reporting the cost to the user (available in the run result). Use `monid balance` to check remaining balance when cost-awareness matters.
@@ -98,6 +98,24 @@ Why this matters: **Monid runs spend the user's Monid balance.** Never spend it 
 
 **Offer, don't override.** When both the user's tool and a Monid endpoint could handle the task and the user hasn't stated a preference, use the user's tool. If Monid adds a genuine capability their tool lacks, mention it as an alternative and let the user choose — never silently switch.
 
+### Endpoint Health
+
+`discover` shows a `Health` column: a status verdict plus the median run time, e.g. `healthy 4.4s`. `inspect` adds the tail — `Run time: 4.4s typical · 6.1s tail`. With `-j`, both are on each result's `metrics` field.
+
+| Status | Meaning |
+|--------|---------|
+| `healthy` | Confirmed working within the last few minutes. |
+| `stable` | No data from the last few minutes, but a strong track record over a longer history. |
+| `degraded` | Unstable, or trending that way — still works in most cases. |
+| `outage` | Known not to be working. Hidden from `discover` unless you pass `-u/--include-unavailable`. |
+| `unknown` *(or blank)* | Not enough data to reach a verdict. |
+
+`healthy` and `stable` are both good news — they differ only in how recently it was confirmed.
+
+**Use health to break ties, never to filter.** Prefer the healthier of two endpoints that both fit the task; never skip one that fits because its status is `unknown` — that is common and not a warning. Any status not listed here prints as-is; treat it as informational.
+
+A missing run time means low traffic, not a slow endpoint. Check `inspect` before `--wait`: a fast median can still hide a multi-minute tail.
+
 ### Check the Hints
 
 Commands can return a **Hints** block. When present, it carries suggested actions from the server: which command to run next, how this endpoint relates to others, or caveats worth knowing. Read it before deciding your next move, and prefer its suggestions over guessing. With `-j`, the same data is on the response's `hints` field.
@@ -110,7 +128,7 @@ Each command supports `--help` for full usage. Here's what's available:
 
 | Command | What it does |
 |---------|-------------|
-| `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`) |
+| `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`, `-u` to include endpoints in outage) |
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs |
@@ -404,4 +422,5 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 8. **Report costs when relevant** — after a run completes, the result includes `cost.value`. Consider telling the user how much the run cost. Use `monid balance` to check remaining balance if the user cares about budget. Use your judgment — don't report costs if the user hasn't indicated cost-awareness.
 9. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
 10. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.
-11. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.
+11. **Use health to break ties, never to filter** — prefer the healthier of two endpoints that both fit (`healthy` and `stable` are both good; avoid `degraded`). Never skip an endpoint over an `unknown` status or a missing run time; both usually just mean low traffic. See [Endpoint Health](#endpoint-health).
+12. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.

@@ -1,11 +1,12 @@
 import chalk from 'chalk';
 import { renderTable } from './table.js';
-import { statusBadge, price as formatPrice } from './colors.js';
+import { statusBadge, healthBadge, price as formatPrice } from './colors.js';
 import type {
   BalanceResponse,
   ControlSnapshot,
   DiscoverResponse,
   EndpointInput,
+  EndpointMetrics,
   InspectResponse,
   MonetaryValue,
   NestedPrice,
@@ -36,16 +37,34 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
     return;
   }
 
-  const headers = ['Provider', 'Endpoint', 'Price', 'Description', 'Verified'];
+  // ONE `Health` column, not a status column plus a latency column. The two
+  // facts answer the same question ("can I rely on this, and what will it
+  // cost me in time?"), and splitting them spent ~20 chars of width to put a
+  // gap between them. `Health` matches the section name `inspect` prints, so
+  // the same concept reads under the same word on both surfaces.
+  //
+  // It sits at the end next to `Verified`: both are narrow and often empty,
+  // so grouping them confines the ragged whitespace to one edge instead of
+  // punching a hole through the middle of the table.
+  const headers = [
+    'Provider',
+    'Endpoint',
+    'Price',
+    'Description',
+    'Health',
+    'Verified',
+  ];
   const rows = data.results.map((r) => [
     r.provider,
     r.endpoint,
     formatPriceCompact(r.price),
     truncate(r.description, 50),
+    formatHealthCell(r.metrics),
     hasTag(r.tags, 'verified') ? chalk.green('✓') : '',
   ]);
 
-  renderTable(headers, rows, { columns: { 4: { align: 'center' } } });
+  // Index 5 = Verified. It shifts whenever a column is added before it.
+  renderTable(headers, rows, { columns: { 5: { align: 'center' } } });
 
   formatHints(data.hints ?? data.usage);
 }
@@ -120,6 +139,8 @@ export function formatInspectResult(data: InspectResponse): void {
     });
   }
 
+  formatHealth(data.metrics);
+
   if (data.input) {
     console.log();
     console.log(chalk.bold('Input'));
@@ -147,6 +168,112 @@ export function formatInspectResult(data: InspectResponse): void {
   formatHints(data.hints ?? data.usage);
 
   console.log();
+}
+
+// --- Endpoint Health ---
+
+/**
+ * Render the `Health` section of `inspect`.
+ *
+ * The section is skipped only when there is no `metrics` block at all —
+ * absence means "no data", and inventing a reassuring default would misreport
+ * an unmeasured endpoint as fine. Otherwise `Status:` always prints whatever
+ * verdict the server sent, `unknown` included: on a detail view the reader has
+ * asked about this one endpoint, so "we don't know" is an answer, and a
+ * missing line would be indistinguishable from a rendering bug.
+ *
+ * `Run time:` is omitted without percentiles, and renders only the ones
+ * actually present (`p50` and `p95` are independently optional). It is
+ * independent of the verdict, so an `unknown`-but-timed endpoint still shows
+ * its run time.
+ *
+ * Exported for tests.
+ */
+export function formatHealth(metrics: EndpointMetrics | undefined): void {
+  if (!metrics) return;
+
+  const status = healthBadge(metrics.status);
+  const runTime = formatRunTime(metrics.runTimeMs);
+  if (!status && !runTime) return;
+
+  console.log();
+  console.log(chalk.bold('Health'));
+  if (status) console.log(`  Status:   ${status}`);
+  if (runTime) console.log(`  Run time: ${runTime}`);
+}
+
+/**
+ * "healthy 4.4s" — the single-cell health summary for the discover table.
+ *
+ * ONE fact per dimension: the verdict, plus the MEDIAN run time. The tail
+ * (`p95`) is deliberately not here. Two durations in a scan column have to be
+ * read positionally to tell median from tail, and getting that backwards
+ * inverts the decision they inform (`--wait` vs fire-and-poll) — a labelled
+ * two-value render is what `inspect` is for.
+ *
+ * Both halves are independently optional, and either may be missing without
+ * the other:
+ *   - verdict + median  ⇒ `healthy 4.4s`
+ *   - verdict only      ⇒ `healthy`
+ *   - median only       ⇒ `4.4s`   (status was `unknown`/absent)
+ *   - neither           ⇒ `''`     (blank cell, never a placeholder)
+ *
+ * The duration is left UNSTYLED. It was briefly dimmed to keep the verdict
+ * primary, but `chalk.gray` is bright-black (SGR 90), which is close to
+ * unreadable on the dark terminal themes most people use — and an unreadable
+ * number is worse than a slightly less emphatic one. The colored verdict next
+ * to a plain duration already carries the hierarchy.
+ *
+ * Exported for tests.
+ */
+export function formatHealthCell(metrics: EndpointMetrics | undefined): string {
+  if (!metrics) return '';
+  const status = healthBadge(metrics.status);
+  const p50 = metrics.runTimeMs?.p50;
+  const typical = p50 === undefined ? '' : formatDuration(p50);
+  if (!status) return typical;
+  if (!typical) return status;
+  return `${status} ${typical}`;
+}
+
+/**
+ * "4.4s typical · 6.1s tail" — the percentiles with plain-language labels
+ * instead of `p50`/`p95`, which say nothing to a reader who doesn't already
+ * know the convention. Returns `undefined` when neither is present so the
+ * caller can skip the line.
+ */
+function formatRunTime(runTimeMs: EndpointMetrics['runTimeMs']): string | undefined {
+  if (!runTimeMs) return undefined;
+  const parts: string[] = [];
+  if (runTimeMs.p50 !== undefined) {
+    parts.push(`${formatDuration(runTimeMs.p50)} typical`);
+  }
+  if (runTimeMs.p95 !== undefined) {
+    parts.push(`${formatDuration(runTimeMs.p95)} tail`);
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
+/**
+ * Human-readable duration from milliseconds.
+ *
+ * The catalog spans roughly 700ms to 450s, so a raw ms number is unreadable at
+ * the top of that range (`447031ms`) and a seconds-only render is imprecise at
+ * the bottom. Three bands: sub-second stays in ms, under a minute gets one
+ * decimal second, above that switches to minutes.
+ *
+ * Exported for tests.
+ */
+export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return chalk.gray('n/a');
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${trimZero(ms / 1000)}s`;
+  return `${trimZero(ms / 60_000)}m`;
+}
+
+/** One decimal, but `4.0` renders as `4` — the trailing zero is noise. */
+function trimZero(n: number): string {
+  return n.toFixed(1).replace(/\.0$/, '');
 }
 
 // --- Run Detail ---

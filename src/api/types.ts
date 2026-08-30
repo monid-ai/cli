@@ -126,6 +126,64 @@ export interface ProviderResponse {
 /** Optional, free-form hints map that any response may carry on the top level. */
 export type Hints = Record<string, unknown>;
 
+// --- Endpoint Metrics (health) ---
+
+/**
+ * Server-computed operational verdict for an endpoint.
+ *
+ * Two evidence horizons are combined server-side — a FRESH one ("is it working
+ * right now?") and a LONG one ("has it been any good lately?") — in the
+ * severity order `outage > degraded > healthy > stable > unknown`:
+ *
+ *  - `healthy`  confirmed working within the last few minutes.
+ *  - `stable`   nothing from the last few minutes, but a strong track record
+ *               over a longer history.
+ *  - `degraded` unstable, or trending that way — still works in most cases.
+ *               NOT "expect failures": it is a caution, not a rejection.
+ *  - `outage`   known not to be working. Filtered out of discover
+ *               server-side unless the request opts in via
+ *               `includeUnavailable`.
+ *  - `unknown`  not enough data to reach a verdict. Never a negative signal.
+ *
+ * `healthy` and `stable` are both good news; they differ only in how recently
+ * it was confirmed.
+ *
+ * The `(string & {})` tail keeps literal autocomplete while still accepting
+ * values a future backend may add, so a new verdict does not require a CLI
+ * release to render (same forward-compat posture as `Price.type`).
+ */
+export type EndpointHealthStatus =
+  | 'healthy'
+  | 'stable'
+  | 'degraded'
+  | 'outage'
+  | 'unknown'
+  | (string & {});
+
+/**
+ * Recent operational health of an endpoint, carried by BOTH `discover` (per
+ * result) and `inspect` — the backend emits one shared projection for the two
+ * surfaces, so they are contractually identical here.
+ *
+ * The whole block is optional: it is omitted when analytics is unavailable for
+ * the request. Its absence means "no data", NEVER "healthy" — renderers must
+ * not substitute a positive default.
+ *
+ * The lookback windows behind these numbers are deliberately not serialized
+ * (they are server-side hints, not a contract), so nothing here may imply a
+ * specific measurement period.
+ */
+export interface EndpointMetrics {
+  status: EndpointHealthStatus;
+  /**
+   * End-to-end run time percentiles. Independent of `status` — an endpoint too
+   * sparsely sampled for a verdict can still have timings. Absent when no
+   * window had enough measured runs; `p50` and `p95` are each individually
+   * optional, and the block is never emitted empty.
+   */
+  runTimeMs?: { p50?: number; p95?: number };
+}
+
 /** @deprecated Renamed to `Hints`. Kept for backward compatibility. */
 export type Usage = Hints;
 
@@ -180,6 +238,8 @@ export interface DiscoverResult {
   price: Price;
   score: number;
   tags: string[];
+  /** Recent health. Absent ⇒ no data (never "healthy"). */
+  metrics?: EndpointMetrics;
 }
 
 export interface DiscoverResponse {
@@ -217,6 +277,8 @@ export interface InspectResponse {
   tags?: string[];
   docUrl?: string;
   notes?: string[];
+  /** Recent health. Absent ⇒ no data (never "healthy"). */
+  metrics?: EndpointMetrics;
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;

@@ -12,8 +12,12 @@ export const discoverCommand = new Command()
   .option('-q, --query <query:string>', 'Search query.', { required: true })
   .option('-l, --limit <limit:number>', 'Maximum number of results (max 50).')
   .option('-s, --min-score <minScore:number>', 'Minimum relevance score (float, higher = more relevant filtering).')
+  .option(
+    '-u, --include-unavailable',
+    'Include endpoints currently in outage (hidden by default, ranked last).',
+  )
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ query, limit, minScore, json }) => {
+  .action(async ({ query, limit, minScore, includeUnavailable, json }) => {
     try {
       const config = new ConfigManager();
       const active = config.getActiveKey();
@@ -30,7 +34,7 @@ export const discoverCommand = new Command()
         startSpinner(`Searching for "${query}"...`);
       }
 
-      const data = await api.discover(query, limit, minScore);
+      const data = await api.discover(query, limit, minScore, includeUnavailable);
       const updateInfo = await config.getUpdateInfo();
 
       if (json) {

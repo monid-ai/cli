@@ -94,10 +94,14 @@ export class MonidAPI {
     query: string,
     limit?: number,
     minScore?: number,
+    includeUnavailable?: boolean,
   ): Promise<DiscoverResponse> {
     const body: Record<string, unknown> = { query };
     if (limit !== undefined) body.limit = limit;
     if (minScore !== undefined) body.minScore = minScore;
+    // Sent only when opting IN, so the request body is byte-identical to
+    // before for every existing caller (the server defaults it to false).
+    if (includeUnavailable) body.includeUnavailable = true;
     return this.request('POST', '/v1/discover', body);
   }
 
