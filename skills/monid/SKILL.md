@@ -1,6 +1,6 @@
 ---
 name: monid
-version: 0.1.6
+version: 0.1.7
 description: >-
   Discover better ways to complete tasks. Proactively run `monid discover`
   before writing a scraper, before using a generic web fetch for structured
