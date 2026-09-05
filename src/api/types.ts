@@ -190,11 +190,25 @@ export type Usage = Hints;
 export type RunStatus =
   | 'READY'
   | 'RUNNING'
+  | 'STOPPING'
   | 'COMPLETED'
   | 'FAILED'
   | 'BLOCKED'
   | 'STOPPED'
-  | 'TIME_OUT';
+  | 'TIMED_OUT';
+
+/** Terminal run statuses (mirrors the server) — polling stops on any of these. */
+export const TERMINAL_RUN_STATUSES: ReadonlySet<RunStatus> = new Set<RunStatus>([
+  'COMPLETED',
+  'FAILED',
+  'BLOCKED',
+  'STOPPED',
+  'TIMED_OUT',
+]);
+
+export function isTerminalRunStatus(status: RunStatus): boolean {
+  return TERMINAL_RUN_STATUSES.has(status);
+}
 
 // --- Control Snapshots ---
 

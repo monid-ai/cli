@@ -346,11 +346,14 @@ API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate
 |--------|---------|
 | `READY` | Queued, waiting to start |
 | `RUNNING` | Actively executing |
+| `STOPPING` | Stop requested, shutting down (transient) |
 | `COMPLETED` | Finished successfully — results available |
 | `FAILED` | Execution failed — check error details |
 | `BLOCKED` | A workspace control (budget or run cap) prevented the run — see the `controls` list for which one |
 | `STOPPED` | The run was stopped on request via `monid runs stop` |
-| `TIME_OUT` | The run exceeded its time limit and was terminated |
+| `TIMED_OUT` | The run exceeded its time limit and was terminated |
+
+Status values are always UPPERCASE and case-sensitive — compare against `COMPLETED`, never `completed`.
 
 Runs typically take **1 to 120 seconds** depending on the endpoint and data volume.
 
@@ -362,7 +365,7 @@ Request a stop with `monid runs stop`:
 monid runs stop -r 01HXYZ...
 ```
 
-**Not all runs can be stopped.** Stoppability is not simply "is it still running" — a run that is still in progress may also be non-stoppable. The authoritative signal is the `stoppable` field on the run detail from `monid runs get -r <runId>` (from `GET /v1/runs/{id}`): only attempt a stop when `stoppable` is `true`. If `stoppable` is `false`, do not attempt it — this includes runs in a terminal state (`COMPLETED`, `FAILED`, `BLOCKED`, `STOPPED`, `TIME_OUT`) as well as in-progress runs that the platform does not allow stopping. Attempting to stop a non-stoppable run returns a conflict.
+**Not all runs can be stopped.** Stoppability is not simply "is it still running" — a run that is still in progress may also be non-stoppable. The authoritative signal is the `stoppable` field on the run detail from `monid runs get -r <runId>` (from `GET /v1/runs/{id}`): only attempt a stop when `stoppable` is `true`. If `stoppable` is `false`, do not attempt it — this includes runs in a terminal state (`COMPLETED`, `FAILED`, `BLOCKED`, `STOPPED`, `TIMED_OUT`) as well as in-progress runs that the platform does not allow stopping. Attempting to stop a non-stoppable run returns a conflict.
 
 ```bash
 # Check the run first; when stoppable, the output ends with a hint line

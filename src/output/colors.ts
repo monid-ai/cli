@@ -27,6 +27,8 @@ export function statusBadge(status: RunStatus): string {
       return chalk.cyan(status);
     case 'RUNNING':
       return chalk.yellow(status);
+    case 'STOPPING':
+      return chalk.yellow(status);
     case 'COMPLETED':
       return chalk.green(status);
     case 'FAILED':
@@ -35,7 +37,7 @@ export function statusBadge(status: RunStatus): string {
       return chalk.yellow(status);
     case 'STOPPED':
       return chalk.gray(status);
-    case 'TIME_OUT':
+    case 'TIMED_OUT':
       return chalk.red(status);
     default:
       return status;

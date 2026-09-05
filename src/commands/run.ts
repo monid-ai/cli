@@ -16,7 +16,7 @@ import {
 } from '../output/spinner.js';
 import { statusBadge } from '../output/colors.js';
 import { pollUntilDone } from '../utils/poll.js';
-import type { RunDetailResponse } from '../api/types.js';
+import { isTerminalRunStatus, type RunDetailResponse } from '../api/types.js';
 
 export const runCommand = new Command()
   .name('run')
@@ -98,10 +98,7 @@ export const runCommand = new Command()
       const runRes = await api.run(provider, endpoint, bodyData, queryParams, pathParams);
 
       // Check if the run completed synchronously
-      const isTerminal =
-        runRes.status === 'COMPLETED' ||
-        runRes.status === 'FAILED' ||
-        runRes.status === 'BLOCKED';
+      const isTerminal = isTerminalRunStatus(runRes.status);
 
       if (!wait && !isTerminal) {
         // Default: fire and return the run ID (only if not already complete)
@@ -144,10 +141,7 @@ export const runCommand = new Command()
 
         result = await pollUntilDone<RunDetailResponse>(
           () => api.getRun(runRes.runId),
-          (r) =>
-            r.status === 'COMPLETED' ||
-            r.status === 'FAILED' ||
-            r.status === 'BLOCKED',
+          (r) => isTerminalRunStatus(r.status),
           timeoutMs,
         );
       }
@@ -162,6 +156,10 @@ export const runCommand = new Command()
           succeedSpinner(`Run completed: ${result.runId}`);
         } else if (result.status === 'BLOCKED') {
           failSpinner(`Run blocked: ${result.runId}`);
+        } else if (result.status === 'STOPPED') {
+          succeedSpinner(`Run stopped: ${result.runId}`);
+        } else if (result.status === 'TIMED_OUT') {
+          failSpinner(`Run timed out: ${result.runId}`);
         } else {
           failSpinner(`Run failed: ${result.runId}`);
         }

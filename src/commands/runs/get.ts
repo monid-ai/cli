@@ -12,7 +12,7 @@ import {
   stopSpinner,
 } from '../../output/spinner.js';
 import { pollUntilDone } from '../../utils/poll.js';
-import type { RunDetailResponse } from '../../api/types.js';
+import { isTerminalRunStatus, type RunDetailResponse } from '../../api/types.js';
 
 export const runsGetCommand = new Command()
   .name('get')
@@ -50,12 +50,7 @@ export const runsGetCommand = new Command()
 
         result = await pollUntilDone<RunDetailResponse>(
           () => api.getRun(runId),
-          (r) =>
-            r.status === 'COMPLETED' ||
-            r.status === 'FAILED' ||
-            r.status === 'BLOCKED' ||
-            r.status === 'STOPPED' ||
-            r.status === 'TIME_OUT',
+          (r) => isTerminalRunStatus(r.status),
           timeoutMs,
         );
       } else {
@@ -76,7 +71,7 @@ export const runsGetCommand = new Command()
           failSpinner(`Run blocked: ${result.runId}`);
         } else if (result.status === 'STOPPED') {
           succeedSpinner(`Run stopped: ${result.runId}`);
-        } else if (result.status === 'TIME_OUT') {
+        } else if (result.status === 'TIMED_OUT') {
           failSpinner(`Run timed out: ${result.runId}`);
         } else {
           succeedSpinner(`Run status: ${result.status}`);
