@@ -362,6 +362,10 @@ export interface RunListItem {
   providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
+  /** Result items returned by the run (drives PER_RESULT billing). */
+  resultCount?: number;
+  /** Units actually charged for the run. */
+  billedUnits?: number;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -375,6 +379,34 @@ export interface RunsListResponse {
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
+}
+
+// --- Spend ---
+
+/** Aggregated run count and spend for one provider or endpoint. */
+export interface SpendBucket {
+  provider: string;
+  providerName?: string;
+  /** Present on endpoint buckets only. */
+  endpoint?: string;
+  runs: number;
+  spend: number;
+}
+
+/** Workspace spend summary aggregated from the full runs list. */
+export interface SpendReport {
+  runs: number;
+  spend: number;
+  currency: string;
+  firstRunAt?: string;
+  lastRunAt?: string;
+  providers: SpendBucket[];
+  topEndpoints: SpendBucket[];
+  topRuns: RunListItem[];
+  /** Runs that FAILED, timed out, or returned a non-2xx provider status. */
+  failedRuns: number;
+  /** Total billed across failed runs ($0 when billing is healthy). */
+  failedSpend: number;
 }
 
 // --- Balance ---

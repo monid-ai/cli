@@ -135,6 +135,7 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait) |
 | `monid runs stop` | Stop an in-progress run (`-r <runId>`). Not all runs can be stopped |
 | `monid balance` | Show current workspace balance |
+| `monid spend` | Summarize workspace spend by provider and endpoint |
 | `monid setup` | Complete CLI setup after installation (no API key required) |
 | `monid keys add` | Add an API key (`-k <key> -l <label>`) |
 | `monid keys list` | Show configured keys |

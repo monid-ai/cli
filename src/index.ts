@@ -1,6 +1,7 @@
 import { Command } from '@cliffy/command';
 import { VERSION } from './config/constants.js';
 import { balanceCommand } from './commands/balance.js';
+import { spendCommand } from './commands/spend.js';
 import { keysCommand } from './commands/keys/index.js';
 import { discoverCommand } from './commands/discover.js';
 import { inspectCommand } from './commands/inspect.js';
@@ -27,6 +28,7 @@ const cli = new Command()
   .command('whoami', whoamiCommand)
   .command('setup', setupCommand)
   .command('balance', balanceCommand)
+  .command('spend', spendCommand)
   .command('keys', keysCommand);
 
 await cli.parse();
