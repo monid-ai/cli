@@ -78,7 +78,21 @@ export class MonidAPI {
       return undefined as T;
     }
 
-    const data = await res.json() as T & ApiErrorResponse;
+    // Not every response on this socket comes from the API. A gateway, proxy
+    // or load balancer in front of it answers 5xx with an HTML error page,
+    // and an unparsed body must not cost us the status: parsing FIRST turned
+    // a plain 502 into `Unexpected token '<', "<html>..." is not valid JSON`
+    // and threw the status away, so an upstream blip read as a broken CLI.
+    // Parse defensively and let the status drive the error instead.
+    const raw = await res.text();
+    let data: (T & ApiErrorResponse) | undefined;
+    let parsed = false;
+    try {
+      data = JSON.parse(raw) as T & ApiErrorResponse;
+      parsed = true;
+    } catch {
+      // Body is not JSON — handled below, by status first.
+    }
 
     if (!res.ok) {
       const message =
@@ -87,7 +101,17 @@ export class MonidAPI {
       throw new MonidError(code, message, res.status);
     }
 
-    return data;
+    // 2xx that is not JSON is still a broken response — name it, and show
+    // enough of the body to tell a captive portal from a bad deploy.
+    if (!parsed) {
+      throw new MonidError(
+        'INVALID_RESPONSE',
+        `Expected JSON from ${url} but got ${describeBody(res, raw)}`,
+        res.status,
+      );
+    }
+
+    return data as T;
   }
 
   async discover(
@@ -216,6 +240,21 @@ export class MonidAPI {
       `/v1/resources/${encodeURIComponent(resourceId)}/release`,
     );
   }
+}
+
+/**
+ * Describe a body that failed to parse as JSON, for an error message.
+ * Reports the declared content type and a short, whitespace-collapsed
+ * snippet — enough to identify an HTML error page or a captive portal
+ * without dumping a whole document into the terminal.
+ */
+function describeBody(res: Response, raw: string): string {
+  const type = res.headers.get('content-type')?.split(';')[0]?.trim();
+  const snippet = raw.trim().replace(/\s+/g, ' ').slice(0, 80);
+  if (!snippet) {
+    return type ? `an empty ${type} body` : 'an empty body';
+  }
+  return `${type ?? 'an unknown content type'}: ${snippet}${raw.trim().length > 80 ? '…' : ''}`;
 }
 
 function statusToCode(status: number): string {
