@@ -405,9 +405,11 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 **401 / Unauthorized** — API key is invalid or expired. Check with `monid keys list`, generate a new one at https://app.monid.ai/access/api-keys.
 
-**Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
+**Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), the provider's own rate limits (retry later), or request scope too large (reduce item count).
 
 **Run status BLOCKED** — A workspace control stopped the run before it executed (e.g. a budget cap or run cap). Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until the control is changed — let the user know they can pause or adjust the control on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
+
+**Rate limited** (`Monid: Rate limited on <what>. Retry after Ns.`, exit code 75; `--json` prints `{"rateLimited":{"message","retryAfterSec","limitedOn"}}`) — the workspace hit a request limit. Nothing was run or charged. Wait `retryAfterSec` seconds, then retry the same command. `--wait` polling already waits this out on its own. Space out bursts of calls rather than retrying immediately.
 
 **Run taking a long time** — Normal for some endpoints. Runs can take up to 120 seconds. Keep polling or let `--wait` handle it.
 

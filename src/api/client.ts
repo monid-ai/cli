@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../config/constants.js';
-import { MonidError } from '../utils/error.js';
+import { MonidError, type RateLimitInfo } from '../utils/error.js';
 import type {
   BalanceResponse,
   DiscoverResponse,
@@ -60,6 +60,8 @@ export class MonidAPI {
     method: string,
     path: string,
     body?: unknown,
+    /** Human label for a rate-limit message (`discover`, `tinyfish /search`). */
+    label?: string,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -78,16 +80,28 @@ export class MonidAPI {
       return undefined as T;
     }
 
-    const data = await res.json() as T & ApiErrorResponse;
-
     if (!res.ok) {
+      // Parse defensively: an error body is not always JSON (e.g. the edge
+      // firewall's own 429), and a parse failure must not hide the status.
+      const text = await res.text();
+      let data: ApiErrorResponse | undefined;
+      try {
+        data = JSON.parse(text) as ApiErrorResponse;
+      } catch {
+        data = undefined;
+      }
       const message =
-        data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
-      const code = data?.error?.code ?? statusToCode(res.status);
-      throw new MonidError(code, message, res.status);
+        data?.error?.message ?? data?.message ?? (text.trim() || `HTTP ${res.status}`);
+      const code = data?.errorCode ?? data?.error?.code ?? statusToCode(res.status);
+      throw new MonidError(code, message, res.status, {
+        errorCode: data?.errorCode,
+        retryAfterSec: positiveInt(res.headers.get('retry-after')),
+        rateLimit: rateLimitFrom(res.headers),
+        limitedOn: label ?? defaultLabel(method, path),
+      });
     }
 
-    return data;
+    return await res.json() as T;
   }
 
   async discover(
@@ -102,14 +116,14 @@ export class MonidAPI {
     // Sent only when opting IN, so the request body is byte-identical to
     // before for every existing caller (the server defaults it to false).
     if (includeUnavailable) body.includeUnavailable = true;
-    return this.request('POST', '/v1/discover', body);
+    return this.request('POST', '/v1/discover', body, 'discover');
   }
 
   async inspect(
     provider: string,
     endpoint: string,
   ): Promise<InspectResponse> {
-    return this.request('POST', '/v1/inspect', { provider, endpoint });
+    return this.request('POST', '/v1/inspect', { provider, endpoint }, 'inspect');
   }
 
   async run(
@@ -127,7 +141,7 @@ export class MonidAPI {
     const reqBody: Record<string, unknown> = { provider, endpoint };
     if (Object.keys(input).length > 0) reqBody.input = input;
 
-    return this.request('POST', '/v1/run', reqBody);
+    return this.request('POST', '/v1/run', reqBody, `${provider} ${endpoint}`);
   }
 
   async getRun(runId: string): Promise<RunDetailResponse> {
@@ -216,6 +230,26 @@ export class MonidAPI {
       `/v1/resources/${encodeURIComponent(resourceId)}/release`,
     );
   }
+}
+
+function positiveInt(v: string | null): number | undefined {
+  if (v === null || v.trim() === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.ceil(n) : undefined;
+}
+
+function rateLimitFrom(h: Headers): RateLimitInfo | undefined {
+  const info: RateLimitInfo = {
+    limit: positiveInt(h.get('ratelimit-limit')),
+    remaining: positiveInt(h.get('ratelimit-remaining')),
+    resetSec: positiveInt(h.get('ratelimit-reset')),
+  };
+  return Object.values(info).some((v) => v !== undefined) ? info : undefined;
+}
+
+/** `GET /v1/runs/abc?x=1` → `GET /v1/runs/abc` */
+function defaultLabel(method: string, path: string): string {
+  return `${method} ${path.split('?')[0]}`;
 }
 
 function statusToCode(status: number): string {
