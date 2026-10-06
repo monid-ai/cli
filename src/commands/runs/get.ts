@@ -52,9 +52,6 @@ export const runsGetCommand = new Command()
           () => api.getRun(runId),
           (r) => isTerminalRunStatus(r.status),
           timeoutMs,
-          (sec) => {
-            if (!json) updateSpinner(`Rate limited, retrying in ${sec}s… (run ${runId})`);
-          },
         );
       } else {
         result = await api.getRun(runId);

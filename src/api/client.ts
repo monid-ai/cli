@@ -1,5 +1,5 @@
 import { API_BASE_URL } from '../config/constants.js';
-import { MonidError, type RateLimitInfo } from '../utils/error.js';
+import { MonidError } from '../utils/error.js';
 import type {
   BalanceResponse,
   DiscoverResponse,
@@ -90,14 +90,12 @@ export class MonidAPI {
       } catch {
         data = undefined;
       }
-      const message =
-        data?.error?.message ?? data?.message ?? (text.trim() || `HTTP ${res.status}`);
-      const code = data?.errorCode ?? data?.error?.code ?? statusToCode(res.status);
+      const message = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
+      const code = data?.error?.code ?? statusToCode(res.status);
       throw new MonidError(code, message, res.status, {
-        errorCode: data?.errorCode,
         retryAfterSec: positiveInt(res.headers.get('retry-after')),
-        rateLimit: rateLimitFrom(res.headers),
         limitedOn: label ?? defaultLabel(method, path),
+        providerRun: providerRunOf(data, res.status),
       });
     }
 
@@ -238,13 +236,29 @@ function positiveInt(v: string | null): number | undefined {
   return Number.isFinite(n) && n >= 0 ? Math.ceil(n) : undefined;
 }
 
-function rateLimitFrom(h: Headers): RateLimitInfo | undefined {
-  const info: RateLimitInfo = {
-    limit: positiveInt(h.get('ratelimit-limit')),
-    remaining: positiveInt(h.get('ratelimit-remaining')),
-    resetSec: positiveInt(h.get('ratelimit-reset')),
+/**
+ * A sync `POST /v1/run` returns the PROVIDER's HTTP status (401/403/429, or
+ * 502 for a provider 402) with a COMPLETED run body, not Monid's
+ * `{ code, message }` envelope. Return the run so the error is not
+ * presented as Monid's own (expired key, workspace rate limit, ...). The
+ * provider's real status is in `providerResponse.httpStatus`.
+ */
+function providerRunOf(
+  data: unknown,
+  httpStatus: number,
+): { runId: string; httpStatus: number } | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const { status, runId, providerResponse } = data as {
+    status?: unknown;
+    runId?: unknown;
+    providerResponse?: { httpStatus?: unknown };
   };
-  return Object.values(info).some((v) => v !== undefined) ? info : undefined;
+  if (status !== 'COMPLETED' || typeof runId !== 'string') return undefined;
+  const providerStatus = providerResponse?.httpStatus;
+  return {
+    runId,
+    httpStatus: typeof providerStatus === 'number' ? providerStatus : httpStatus,
+  };
 }
 
 /** `GET /v1/runs/abc?x=1` → `GET /v1/runs/abc` */

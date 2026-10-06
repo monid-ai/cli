@@ -1,36 +1,27 @@
 import chalk from 'chalk';
 import { API_BASE_URL } from '../config/constants.js';
 
-/** Exit code for a rate-limited command: EX_TEMPFAIL — "try again later". */
-export const EXIT_RATE_LIMITED = 75;
-
-/** The binding limit from the public `RateLimit-*` headers (numbers only). */
-export interface RateLimitInfo {
-  limit?: number;
-  remaining?: number;
-  resetSec?: number;
-}
-
 export interface MonidErrorDetails {
-  /** The server's documented machine code (body `errorCode`), if any. */
-  errorCode?: string;
   /** Whole seconds from the `Retry-After` header. */
   retryAfterSec?: number;
-  rateLimit?: RateLimitInfo;
   /**
    * What the command asked for (`tinyfish /search`, `discover`, ...). The
    * API's 429 never names the rule that fired; the CLI knows the call.
    */
   limitedOn?: string;
+  /**
+   * Set when the error status came from the PROVIDER (a sync run returned a
+   * COMPLETED run body with a non-2xx status), not from Monid itself.
+   */
+  providerRun?: { runId: string; httpStatus: number };
 }
 
 export class MonidError extends Error {
   code: string;
   statusCode?: number;
-  errorCode?: string;
   retryAfterSec?: number;
-  rateLimit?: RateLimitInfo;
   limitedOn?: string;
+  providerRun?: { runId: string; httpStatus: number };
 
   constructor(
     code: string,
@@ -42,18 +33,13 @@ export class MonidError extends Error {
     this.name = 'MonidError';
     this.code = code;
     this.statusCode = statusCode;
-    this.errorCode = details.errorCode;
     this.retryAfterSec = details.retryAfterSec;
-    this.rateLimit = details.rateLimit;
     this.limitedOn = details.limitedOn;
+    this.providerRun = details.providerRun;
   }
 }
 
-export function isRateLimited(err: unknown): err is MonidError {
-  return err instanceof MonidError && err.code === 'RATE_LIMITED';
-}
-
-/** `Monid: Rate limited on tinyfish /search. Retry after 37s.` (no color). */
+/** `Rate limited on tinyfish /search. Retry after 37s.` */
 export function rateLimitedMessage(err: MonidError): string {
   const on = err.limitedOn ? ` on ${err.limitedOn}` : '';
   const wait = err.retryAfterSec
@@ -68,6 +54,18 @@ export function rateLimitedMessage(err: MonidError): string {
  */
 function friendlyMessage(err: MonidError): string {
   const serverMsg = err.message;
+
+  // The provider answered; Monid did not reject the call. Never present it
+  // as an expired Monid key or a Monid workspace rate limit.
+  if (err.providerRun) {
+    const { runId, httpStatus } = err.providerRun;
+    const who = err.limitedOn ?? 'The provider';
+    return (
+      `${who}: the provider returned HTTP ${httpStatus} (run ${runId}). ` +
+      `This is the provider's response, not a Monid error. ` +
+      `Details: monid runs get -r ${runId}`
+    );
+  }
 
   switch (err.statusCode) {
     case 400:
@@ -99,28 +97,10 @@ function friendlyMessage(err: MonidError): string {
 export function handleError(err: unknown, json: boolean = false): never {
   let code = 'UNKNOWN';
   let message: string;
-
-  // A rate limit is a "come back later", not a failure of the command's
-  // input: shown in yellow without `error:`, with its own exit code so
-  // scripts and agents can wait `retryAfterSec` and retry.
-  if (isRateLimited(err)) {
-    const message = rateLimitedMessage(err);
-    if (json) {
-      console.log(JSON.stringify({
-        rateLimited: {
-          message,
-          ...(err.retryAfterSec !== undefined ? { retryAfterSec: err.retryAfterSec } : {}),
-          ...(err.limitedOn ? { limitedOn: err.limitedOn } : {}),
-          ...(err.rateLimit ? { rateLimit: err.rateLimit } : {}),
-        },
-      }, null, 2));
-    } else {
-      console.error(`${chalk.yellow('Monid:')} ${message}`);
-    }
-    process.exit(EXIT_RATE_LIMITED);
-  }
+  let fromProvider = false;
 
   if (err instanceof MonidError) {
+    fromProvider = err.providerRun !== undefined;
     code = err.code;
     message = friendlyMessage(err);
   } else if (err instanceof Error) {
@@ -136,7 +116,7 @@ export function handleError(err: unknown, json: boolean = false): never {
 
   console.error(`${chalk.red('monid: error:')} ${message}`);
 
-  if (code === 'AUTH_FAILED') {
+  if (code === 'AUTH_FAILED' && !fromProvider) {
     console.error(
       chalk.gray("  Run 'monid keys add' to configure an API key."),
     );

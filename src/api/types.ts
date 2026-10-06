@@ -558,9 +558,5 @@ export interface ApiErrorResponse {
     message?: string;
     code?: string;
   };
-  /** Flat envelope: `{ code: 429, message, errorCode?: "RATE_LIMITED" }`. */
-  code?: number | string;
   message?: string;
-  /** Documented machine code (e.g. `RATE_LIMITED`); absent on legacy errors. */
-  errorCode?: string;
 }

@@ -24,25 +24,19 @@ async function caught(p: Promise<unknown>): Promise<MonidError> {
 const api = new MonidAPI({ baseUrl: 'https://api.test', apiKey: 'monid_test_x' });
 
 describe('MonidAPI error parsing', () => {
-  it('parses our RATE_LIMITED 429: errorCode, Retry-After, RateLimit-*, and the run label', async () => {
+  it('parses our RATE_LIMITED 429: Retry-After and the run label', async () => {
     stubFetch(
       429,
       JSON.stringify({ code: 429, message: 'Rate limited. Retry after 37s.', errorCode: 'RATE_LIMITED' }),
-      {
-        'Retry-After': '37',
-        'RateLimit-Limit': '60',
-        'RateLimit-Remaining': '0',
-        'RateLimit-Reset': '37',
-      },
+      { 'Retry-After': '37', 'RateLimit-Limit': '60', 'RateLimit-Remaining': '0', 'RateLimit-Reset': '37' },
     );
     const err = await caught(api.run('tinyfish', '/search'));
     expect(err).toBeInstanceOf(MonidError);
     expect(err.code).toBe('RATE_LIMITED');
-    expect(err.errorCode).toBe('RATE_LIMITED');
     expect(err.statusCode).toBe(429);
     expect(err.retryAfterSec).toBe(37);
-    expect(err.rateLimit).toEqual({ limit: 60, remaining: 0, resetSec: 37 });
     expect(err.limitedOn).toBe('tinyfish /search');
+    expect(err.providerRun).toBeUndefined();
   });
 
   it('labels discover / inspect by command, other calls by route', async () => {
@@ -52,11 +46,11 @@ describe('MonidAPI error parsing', () => {
     expect((await caught(api.getRun('01ABC'))).limitedOn).toBe('GET /v1/runs/01ABC');
   });
 
-  it('a non-JSON error body (edge firewall) does not crash parsing', async () => {
-    stubFetch(429, 'Too many requests, retry later', { 'Retry-After': '10' });
+  it('a non-JSON error body (edge firewall) does not crash parsing and is not echoed', async () => {
+    stubFetch(429, '<html>Too many requests</html>', { 'Retry-After': '10' });
     const err = await caught(api.discover('x'));
     expect(err.code).toBe('RATE_LIMITED');
-    expect(err.message).toBe('Too many requests, retry later');
+    expect(err.message).toBe('HTTP 429');
     expect(err.retryAfterSec).toBe(10);
   });
 
@@ -66,6 +60,31 @@ describe('MonidAPI error parsing', () => {
     expect(err.code).toBe('NOT_FOUND');
     expect(err.message).toBe('Run x not found');
     expect(err.retryAfterSec).toBeUndefined();
-    expect(err.rateLimit).toBeUndefined();
+  });
+
+  it('a body errorCode does not replace the status-derived code (same as main)', async () => {
+    stubFetch(402, '{"code":402,"message":"Insufficient funds","errorCode":"WALLET_INSUFFICIENT_FUNDS"}');
+    expect((await caught(api.run('tinyfish', '/search'))).code).toBe('INSUFFICIENT_BALANCE');
+    stubFetch(403, '{"code":403,"message":"Missing scope","errorCode":"INSUFFICIENT_SCOPE"}');
+    expect((await caught(api.discover('x'))).code).toBe('FORBIDDEN');
+  });
+
+  it('a COMPLETED run body on a non-2xx marks the status as the provider\'s', async () => {
+    stubFetch(429, JSON.stringify({ runId: '01RUN', status: 'COMPLETED', providerResponse: { httpStatus: 429 } }));
+    const err = await caught(api.run('tinyfish', '/search'));
+    expect(err.code).toBe('RATE_LIMITED');
+    expect(err.providerRun).toEqual({ runId: '01RUN', httpStatus: 429 });
+  });
+
+  it('a provider 402 surfaced as 502 reports the provider\'s own status', async () => {
+    stubFetch(502, JSON.stringify({ runId: '01RUN', status: 'COMPLETED', providerResponse: { httpStatus: 402 } }));
+    expect((await caught(api.run('tinyfish', '/search'))).providerRun).toEqual({ runId: '01RUN', httpStatus: 402 });
+  });
+
+  it('a TIMED_OUT 408 run body is not treated as a provider status', async () => {
+    stubFetch(408, JSON.stringify({ runId: '01RUN', status: 'TIMED_OUT' }));
+    const err = await caught(api.run('tinyfish', '/search'));
+    expect(err.providerRun).toBeUndefined();
+    expect(err.message).toBe('HTTP 408');
   });
 });
