@@ -60,6 +60,8 @@ export class MonidAPI {
     method: string,
     path: string,
     body?: unknown,
+    /** Human label for a rate-limit message (`discover`, `tinyfish /search`). */
+    label?: string,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -78,16 +80,26 @@ export class MonidAPI {
       return undefined as T;
     }
 
-    const data = await res.json() as T & ApiErrorResponse;
-
     if (!res.ok) {
-      const message =
-        data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
+      // Parse defensively: an error body is not always JSON (e.g. the edge
+      // firewall's own 429), and a parse failure must not hide the status.
+      const text = await res.text();
+      let data: ApiErrorResponse | undefined;
+      try {
+        data = JSON.parse(text) as ApiErrorResponse;
+      } catch {
+        data = undefined;
+      }
+      const message = data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
       const code = data?.error?.code ?? statusToCode(res.status);
-      throw new MonidError(code, message, res.status);
+      throw new MonidError(code, message, res.status, {
+        retryAfterSec: positiveInt(res.headers.get('retry-after')),
+        limitedOn: label ?? defaultLabel(method, path),
+        providerRun: providerRunOf(data, res.status),
+      });
     }
 
-    return data;
+    return await res.json() as T;
   }
 
   async discover(
@@ -102,14 +114,14 @@ export class MonidAPI {
     // Sent only when opting IN, so the request body is byte-identical to
     // before for every existing caller (the server defaults it to false).
     if (includeUnavailable) body.includeUnavailable = true;
-    return this.request('POST', '/v1/discover', body);
+    return this.request('POST', '/v1/discover', body, 'discover');
   }
 
   async inspect(
     provider: string,
     endpoint: string,
   ): Promise<InspectResponse> {
-    return this.request('POST', '/v1/inspect', { provider, endpoint });
+    return this.request('POST', '/v1/inspect', { provider, endpoint }, 'inspect');
   }
 
   async run(
@@ -127,7 +139,7 @@ export class MonidAPI {
     const reqBody: Record<string, unknown> = { provider, endpoint };
     if (Object.keys(input).length > 0) reqBody.input = input;
 
-    return this.request('POST', '/v1/run', reqBody);
+    return this.request('POST', '/v1/run', reqBody, `${provider} ${endpoint}`);
   }
 
   async getRun(runId: string): Promise<RunDetailResponse> {
@@ -216,6 +228,42 @@ export class MonidAPI {
       `/v1/resources/${encodeURIComponent(resourceId)}/release`,
     );
   }
+}
+
+function positiveInt(v: string | null): number | undefined {
+  if (v === null || v.trim() === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.ceil(n) : undefined;
+}
+
+/**
+ * A sync `POST /v1/run` returns the PROVIDER's HTTP status (401/403/429, or
+ * 502 for a provider 402) with a COMPLETED run body, not Monid's
+ * `{ code, message }` envelope. Return the run so the error is not
+ * presented as Monid's own (expired key, workspace rate limit, ...). The
+ * provider's real status is in `providerResponse.httpStatus`.
+ */
+function providerRunOf(
+  data: unknown,
+  httpStatus: number,
+): { runId: string; httpStatus: number } | undefined {
+  if (!data || typeof data !== 'object') return undefined;
+  const { status, runId, providerResponse } = data as {
+    status?: unknown;
+    runId?: unknown;
+    providerResponse?: { httpStatus?: unknown };
+  };
+  if (status !== 'COMPLETED' || typeof runId !== 'string') return undefined;
+  const providerStatus = providerResponse?.httpStatus;
+  return {
+    runId,
+    httpStatus: typeof providerStatus === 'number' ? providerStatus : httpStatus,
+  };
+}
+
+/** `GET /v1/runs/abc?x=1` → `GET /v1/runs/abc` */
+function defaultLabel(method: string, path: string): string {
+  return `${method} ${path.split('?')[0]}`;
 }
 
 function statusToCode(status: number): string {

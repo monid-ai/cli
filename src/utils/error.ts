@@ -1,16 +1,51 @@
 import chalk from 'chalk';
 import { API_BASE_URL } from '../config/constants.js';
 
+export interface MonidErrorDetails {
+  /** Whole seconds from the `Retry-After` header. */
+  retryAfterSec?: number;
+  /**
+   * What the command asked for (`tinyfish /search`, `discover`, ...). The
+   * API's 429 never names the rule that fired; the CLI knows the call.
+   */
+  limitedOn?: string;
+  /**
+   * Set when the error status came from the PROVIDER (a sync run returned a
+   * COMPLETED run body with a non-2xx status), not from Monid itself.
+   */
+  providerRun?: { runId: string; httpStatus: number };
+}
+
 export class MonidError extends Error {
   code: string;
   statusCode?: number;
+  retryAfterSec?: number;
+  limitedOn?: string;
+  providerRun?: { runId: string; httpStatus: number };
 
-  constructor(code: string, message: string, statusCode?: number) {
+  constructor(
+    code: string,
+    message: string,
+    statusCode?: number,
+    details: MonidErrorDetails = {},
+  ) {
     super(message);
     this.name = 'MonidError';
     this.code = code;
     this.statusCode = statusCode;
+    this.retryAfterSec = details.retryAfterSec;
+    this.limitedOn = details.limitedOn;
+    this.providerRun = details.providerRun;
   }
+}
+
+/** `Rate limited on tinyfish /search. Retry after 37s.` */
+export function rateLimitedMessage(err: MonidError): string {
+  const on = err.limitedOn ? ` on ${err.limitedOn}` : '';
+  const wait = err.retryAfterSec
+    ? ` Retry after ${err.retryAfterSec}s.`
+    : ' Please try again later.';
+  return `Rate limited${on}.${wait}`;
 }
 
 /**
@@ -19,6 +54,18 @@ export class MonidError extends Error {
  */
 function friendlyMessage(err: MonidError): string {
   const serverMsg = err.message;
+
+  // The provider answered; Monid did not reject the call. Never present it
+  // as an expired Monid key or a Monid workspace rate limit.
+  if (err.providerRun) {
+    const { runId, httpStatus } = err.providerRun;
+    const who = err.limitedOn ?? 'The provider';
+    return (
+      `${who}: the provider returned HTTP ${httpStatus} (run ${runId}). ` +
+      `This is the provider's response, not a Monid error. ` +
+      `Details: monid runs get -r ${runId}`
+    );
+  }
 
   switch (err.statusCode) {
     case 400:
@@ -32,7 +79,7 @@ function friendlyMessage(err: MonidError): string {
     case 404:
       return `Not found: ${serverMsg}`;
     case 429:
-      return `Rate limited. Please try again later.`;
+      return rateLimitedMessage(err);
     default:
       if (err.statusCode && err.statusCode >= 500) {
         return serverMsg
@@ -50,8 +97,10 @@ function friendlyMessage(err: MonidError): string {
 export function handleError(err: unknown, json: boolean = false): never {
   let code = 'UNKNOWN';
   let message: string;
+  let fromProvider = false;
 
   if (err instanceof MonidError) {
+    fromProvider = err.providerRun !== undefined;
     code = err.code;
     message = friendlyMessage(err);
   } else if (err instanceof Error) {
@@ -67,7 +116,7 @@ export function handleError(err: unknown, json: boolean = false): never {
 
   console.error(`${chalk.red('monid: error:')} ${message}`);
 
-  if (code === 'AUTH_FAILED') {
+  if (code === 'AUTH_FAILED' && !fromProvider) {
     console.error(
       chalk.gray("  Run 'monid keys add' to configure an API key."),
     );
