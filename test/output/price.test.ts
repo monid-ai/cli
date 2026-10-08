@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
-import { formatPriceCompact } from '../../src/output/format.js';
-import type { Price } from '../../src/api/types.js';
+import { formatPriceCompact, formatInspectResult } from '../../src/output/format.js';
+import type { InspectResponse, Price } from '../../src/api/types.js';
 
 /** Strip ANSI color codes so assertions are stable regardless of chalk state. */
 function plain(s: string): string {
@@ -173,5 +173,88 @@ describe('formatPriceCompact', () => {
     const out = plain(formatPriceCompact(p));
     expect(out).toBe('varies');
     expect(out).not.toContain('[object Object]');
+  });
+});
+
+/** Capture everything `formatInspectResult` writes to stdout. */
+function captureInspect(data: InspectResponse): string {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map(String).join(' '));
+  };
+  try {
+    formatInspectResult(data);
+  } finally {
+    console.log = original;
+  }
+  return plain(lines.join('\n'));
+}
+
+/** The exa `/search` price card exactly as the backend sends it: a TIERED
+ *  card whose single add-on tier carries NO `when` — it always applies and is
+ *  metered by its `selector`. */
+const UNGATED_TIER_INSPECT: InspectResponse = {
+  provider: 'exa',
+  providerName: 'Exa',
+  endpoint: '/search',
+  price: {
+    type: 'TIERED',
+    amount: { value: 0.01, currency: 'USD' },
+    default: { type: 'PER_CALL', amount: { value: 0.01, currency: 'USD' } },
+    tiers: [
+      {
+        label: 'Results above 10',
+        selector: { label: 'Results above 10', key: 'numResults', in: 'body' },
+        price: { type: 'PER_RESULT', amount: { value: 0.001, currency: 'USD' } },
+      },
+    ],
+  },
+} as unknown as InspectResponse;
+
+describe('formatInspectResult', () => {
+  it('renders a TIERED tier that has no `when` gate instead of throwing', () => {
+    // Regression: `Object.entries(t.when)` threw "Cannot convert undefined or
+    // null to object" and aborted the whole render right after the base price.
+    const out = captureInspect(UNGATED_TIER_INSPECT);
+    expect(out).toContain('Base:   $0.01 (always)');
+    expect(out).toContain('+ Results above 10: $0.001 / result');
+    // No dangling gate clause when there is nothing to gate on.
+    expect(out).not.toContain('when undefined');
+    expect(out).not.toMatch(/when\s*$/m);
+  });
+
+  it('still renders the gate for a tier that has one', () => {
+    const gated = {
+      ...UNGATED_TIER_INSPECT,
+      price: {
+        ...UNGATED_TIER_INSPECT.price,
+        tiers: [
+          {
+            label: 'Deep mode',
+            when: { deep: true },
+            price: { type: 'PER_CALL', amount: { value: 0.05, currency: 'USD' } },
+          },
+        ],
+      },
+    } as unknown as InspectResponse;
+    expect(captureInspect(gated)).toContain('+ Deep mode: $0.05 when deep=true');
+  });
+
+  it('renders a PER_UNIT_MATRIX variant that has no `when` instead of throwing', () => {
+    const matrix = {
+      ...UNGATED_TIER_INSPECT,
+      price: {
+        type: 'PER_UNIT_MATRIX',
+        amount: { value: 0.02, currency: 'USD' },
+        variants: [
+          { price: { type: 'PER_CALL', amount: { value: 0.02, currency: 'USD' } }, label: 'flat' },
+        ],
+      },
+    } as unknown as InspectResponse;
+    const out = captureInspect(matrix);
+    expect(out).toContain('- $0.02 (flat)');
+    // No orphaned "key=value:" separator when there are no coordinates.
+    expect(out).not.toMatch(/^\s+- :/m);
   });
 });

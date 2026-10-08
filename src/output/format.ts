@@ -13,6 +13,7 @@ import type {
   Price,
   PriceAmount,
   PriceVariant,
+  PriceWhen,
   Resource,
   ResourceEvent,
   ResourceEventsResponse,
@@ -71,6 +72,20 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
 
 // --- Inspect ---
 
+/**
+ * Render a price gate (`when`) as `key=value, key=value`.
+ *
+ * The wire OMITS `when` on an ungated tier or cell — one that always applies
+ * and is metered by its `selector` alone. `Object.entries(undefined)` throws,
+ * so an ungated tier used to abort the whole `inspect` render; it now yields
+ * an empty string and callers drop the clause.
+ */
+function formatPriceWhen(when: PriceWhen | undefined): string {
+  return Object.entries(when ?? {})
+    .map(([k, val]) => `${k}=${val}`)
+    .join(', ');
+}
+
 export function formatInspectResult(data: InspectResponse): void {
   console.log();
 
@@ -109,25 +124,22 @@ export function formatInspectResult(data: InspectResponse): void {
   if (data.price.type === 'PER_UNIT_MATRIX' && data.price.variants?.length) {
     console.log(`  Variants: ${data.price.variants.length} (price varies by input)`);
     for (const v of data.price.variants) {
-      const when = Object.entries(v.when)
-        .map(([k, val]) => `${k}=${val}`)
-        .join(', ');
+      const gate = formatPriceWhen(v.when);
       const label = v.label ? ` ${chalk.gray(`(${v.label})`)}` : '';
-      console.log(`    - ${when}: ${formatAmount(variantCell(v))}${label}`);
+      console.log(`    - ${gate ? `${gate}: ` : ''}${formatAmount(variantCell(v))}${label}`);
     }
   }
   if (data.price.type === 'TIERED') {
-    // Always-on default + gated add-on tiers (SUMMED when their `when`
-    // gate matches the request).
+    // Always-on default + add-on tiers (SUMMED on top of it). A tier with
+    // a `when` gate applies when the gate matches; an ungated tier always
+    // applies and is metered by its `selector`.
     if (data.price.default) {
       console.log(`  Base:   ${formatAmount(data.price.default)} (always)`);
     }
     for (const t of data.price.tiers ?? []) {
-      const when = Object.entries(t.when)
-        .map(([k, val]) => `${k}=${val}`)
-        .join(', ');
+      const gate = formatPriceWhen(t.when);
       console.log(
-        `    + ${t.label}: ${formatAmount(t.price)} when ${when}`,
+        `    + ${t.label}: ${formatAmount(t.price)}${gate ? ` when ${gate}` : ''}`,
       );
     }
   }
