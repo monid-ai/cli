@@ -405,9 +405,15 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 **401 / Unauthorized** — API key is invalid or expired. Check with `monid keys list`, generate a new one at https://app.monid.ai/access/api-keys.
 
-**Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
+**Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), the provider's own rate limits (retry later), or request scope too large (reduce item count).
 
 **Run status BLOCKED** — A workspace control stopped the run before it executed (e.g. a budget cap or run cap). Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until the control is changed — let the user know they can pause or adjust the control on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
+
+**Rate limited** (`monid: error: Rate limited on <what>. Retry after Ns.`; with `--json`, `error.code` is `RATE_LIMITED`) — the workspace hit a Monid request limit. Nothing was run or charged. Wait N seconds, then retry the same command. Space out bursts of calls rather than retrying immediately.
+
+**"the provider returned HTTP …"** (with `--json`, `error.code` is `PROVIDER_ERROR`, plus `runId` and `providerHttpStatus`) — the provider answered the run with an error status (for example its own 401 or rate limit). Your Monid key and workspace limits are fine; do not rotate the key. Check the run with `monid runs get -r <runId>`.
+
+**"Run … timed out"** (with `--json`, `error.code` is `RUN_TIMED_OUT`, plus `runId`) — the whole run exceeded its time limit. It was not charged. Check it with `monid runs get -r <runId>` and retry if needed.
 
 **Run taking a long time** — Normal for some endpoints. Runs can take up to 120 seconds. Keep polling or let `--wait` handle it.
 
