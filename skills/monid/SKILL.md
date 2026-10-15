@@ -131,11 +131,17 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`, `-u` to include endpoints in outage) |
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
-| `monid runs list` | List recent runs |
+| `monid runs list` | List recent runs (`-l <limit>`, `--cursor` for pagination) |
 | `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait) |
 | `monid runs stop` | Stop an in-progress run (`-r <runId>`). Not all runs can be stopped |
+| `monid resources list` | List provisioned resources (`-p <provider>`, `-t <resourceType>` (requires `-p`), `-s <state>`, `-l <limit>`, `--cursor` for pagination) |
+| `monid resources get` | Get a resource with its live external links joined in (`-r <resourceId>`, `--no-external` to skip fetching link details) |
+| `monid resources release` | Release a resource — async and idempotent, may affect billing (`-r <resourceId>`, `-y` to skip confirmation) |
+| `monid resources events` | List a resource's lifecycle event history, oldest first (`-r <resourceId>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid balance` | Show current workspace balance |
+| `monid whoami` | Show the authenticated user and workspace (`--workspaces` to list all workspaces you belong to) |
 | `monid setup` | Complete CLI setup after installation (no API key required) |
+| `monid generate_session_id` | Generate a new short random session ID (no API key required) |
 | `monid keys add` | Add an API key (`-k <key> -l <label>`) |
 | `monid keys list` | Show configured keys |
 | `monid keys remove` | Remove a key (`-l <label>`, `-f` to skip confirmation) |
