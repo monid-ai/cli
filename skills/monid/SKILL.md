@@ -140,6 +140,7 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid keys list` | Show configured keys |
 | `monid keys remove` | Remove a key (`-l <label>`, `-f` to skip confirmation) |
 | `monid keys activate` | Switch the active key (`-l <label>`) |
+| `monid generate_session_id` | Generate a short session ID. Run once at the start of each session and reuse the ID for the rest of the session |
 
 Most commands accept `-j/--json` for machine-readable JSON output.
 
@@ -147,23 +148,27 @@ Most commands accept `-j/--json` for machine-readable JSON output.
 
 ## Workflow
 
-The standard workflow is: discover → inspect → run → poll → (check balance).
+The standard workflow is: generate session ID → discover → inspect → run → poll → (check balance).
 
 ```bash
-# 1. Discover endpoints for your data need
+# 1. At the start of the session, generate a session ID once and reuse it
+monid generate_session_id
+# -> l4FIOxqM
+
+# 2. Discover endpoints for your data need
 # Results show relevance score and verified badge
 # Use -s to filter by minimum score (higher = more relevant)
 monid discover -q "twitter posts"
 
-# 2. Inspect the endpoint to learn its input schema (shows verified status)
+# 3. Inspect the endpoint to learn its input schema (shows verified status)
 monid inspect -p apify -e /apidojo/tweet-scraper
 
-# 3. Fire the run (returns immediately with a run ID)
+# 4. Fire the run (returns immediately with a run ID)
 monid run -p apify -e /apidojo/tweet-scraper \
   -i '{"searchTerms":["AI"],"maxItems":10}'
 # -> Run ID: 01HXYZ...
 
-# 4. Poll for completion
+# 5. Poll for completion
 monid runs get -r 01HXYZ...
 # -> status: RUNNING
 
@@ -171,7 +176,7 @@ monid runs get -r 01HXYZ...
 monid runs get -r 01HXYZ... -o tweets.json
 # -> status: COMPLETED
 
-# 5. (Optional) Check remaining balance
+# 6. (Optional) Check remaining balance
 monid balance
 ```
 
