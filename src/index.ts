@@ -1,6 +1,7 @@
 import { Command } from '@cliffy/command';
 import { VERSION } from './config/constants.js';
 import { balanceCommand } from './commands/balance.js';
+import { topupCommand } from './commands/topup.js';
 import { keysCommand } from './commands/keys/index.js';
 import { discoverCommand } from './commands/discover.js';
 import { inspectCommand } from './commands/inspect.js';
@@ -30,6 +31,7 @@ const cli = new Command()
   .command('whoami', whoamiCommand)
   .command('setup', setupCommand)
   .command('balance', balanceCommand)
+  .command('topup', topupCommand)
   .command('keys', keysCommand)
   .command('generate_session_id', generateSessionIdCommand)
   .command('feedback', feedbackCommand)

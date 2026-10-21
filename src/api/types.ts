@@ -219,26 +219,51 @@ export interface MonetaryValue {
 
 export type WorkspaceBudgetPeriod = string;
 
+/**
+ * A money amount on a control snapshot. The API sends DOLLARS as a plain
+ * number (`serializeControlSnapshotForApi`); the `{ value, currency }` form
+ * is accepted for older responses.
+ */
+export type ControlAmount = number | MonetaryValue;
+
 export interface BudgetControlSnapshot {
   type: 'WORKSPACE_BUDGET';
   period: WorkspaceBudgetPeriod;
-  limitAmount: MonetaryValue;
-  availableAmount: MonetaryValue;
-  heldAmount: MonetaryValue;
-  spentAmount: MonetaryValue;
+  limitAmount: ControlAmount;
+  availableAmount: ControlAmount;
+  heldAmount: ControlAmount;
+  spentAmount: ControlAmount;
   windowStart: string;
 }
 
 export interface RunCapControlSnapshot {
   type: 'WORKSPACE_RUN_CAP';
-  limitAmount: MonetaryValue;
+  limitAmount: ControlAmount;
 }
 
-export type ControlSnapshot = BudgetControlSnapshot | RunCapControlSnapshot;
+/** The workspace wallet balance at block time (never negative on the wire). */
+export interface WalletBalanceControlSnapshot {
+  type: 'WORKSPACE_WALLET_BALANCE';
+  /** The synced wallet balance. */
+  limitAmount: ControlAmount;
+  /** Balance minus money reserved by runs and resources in progress. */
+  availableAmount: ControlAmount;
+  /** Reserved by runs and resources in progress. */
+  heldAmount: ControlAmount;
+  syncedAt?: string;
+}
+
+export type ControlSnapshot =
+  | BudgetControlSnapshot
+  | RunCapControlSnapshot
+  | WalletBalanceControlSnapshot;
 
 /** A control snapshot that contributed to blocking a run. */
 export interface RunControl {
   controlId: string;
+  controlType?: ControlSnapshot['type'];
+  /** What the run needed (dollars) — compare with the snapshot's available. */
+  requiredAmount?: number;
   snapshot: ControlSnapshot;
 }
 
@@ -379,11 +404,27 @@ export interface RunsListResponse {
 
 // --- Balance ---
 
+/** Where to fund the wallet — the same shape the 402 and the balance carry. */
+export interface TopupHints {
+  /** Checkout-session creator (POST, origin-relative); only for a key with
+   *  `topups:create`. */
+  stripe?: string;
+  /** The dashboard wallet page. */
+  dashboard?: string;
+  docs?: string;
+}
+
 export interface BalanceResponse {
   balance: {
     value: number;
     currency: string;
   };
+  /** Reserved by runs and resources in progress. */
+  held?: {
+    value: number;
+    currency: string;
+  };
+  topup?: TopupHints;
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
@@ -588,4 +629,17 @@ export interface ApiErrorResponse {
     code?: string;
   };
   message?: string;
+  /** Documented machine code (e.g. `WALLET_INSUFFICIENT_FUNDS`). */
+  errorCode?: string;
+  /** Funding hints on a 402 `WALLET_INSUFFICIENT_FUNDS`. */
+  topup?: TopupHints;
+}
+
+// --- Top-up ---
+
+export interface TopupSessionResponse {
+  paymentProcessor: string;
+  sessionId: string;
+  /** Hosted checkout page — open it to pay. */
+  url: string;
 }
