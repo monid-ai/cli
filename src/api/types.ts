@@ -56,7 +56,9 @@ export type PriceWhen = Record<string, string | number | boolean>;
 /** One PER_UNIT_MATRIX row. Current wire carries the typed leaf under
  *  `price`; pre-2026-07 backends sent it under `amount` — accept BOTH. */
 export interface PriceVariant {
-  when: PriceWhen;
+  /** Cell coordinates. Absent on an uncoordinated cell — renderers must
+   *  tolerate it (see `PriceTier.when`). */
+  when?: PriceWhen;
   /** Current wire: the typed leaf price for this cell. */
   price?: PriceAmount;
   /** Old wire shape only. */
@@ -68,7 +70,11 @@ export interface PriceVariant {
  *  when its `when` gate matches the request. */
 export interface PriceTier {
   label: string;
-  when: PriceWhen;
+  /** The gate that switches this tier on. ABSENT on an ungated tier — one
+   *  that always applies and is metered purely by its `selector` (e.g. exa
+   *  `/search` charges per result above 10 with no `when` on the wire).
+   *  Optional because the wire omits it; renderers must tolerate it. */
+  when?: PriceWhen;
   /** WHERE the metered quantity lives; absent ⇒ quantity 1. */
   selector?: { label: string; key: string; in: string };
   /** The add-on's leaf price (× the metered quantity). */
