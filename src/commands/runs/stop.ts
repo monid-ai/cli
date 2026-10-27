@@ -8,14 +8,18 @@ import {
   succeedSpinner,
   stopSpinner,
 } from '../../output/spinner.js';
+import { resolveRunId } from './run-id.js';
 
 export const runsStopCommand = new Command()
   .name('stop')
   .description('Stop an in-progress run.')
-  .option('-r, --run-id <runId:string>', 'Run ID to stop.', { required: true })
+  .arguments('[runId:string]')
+  .option('-r, --run-id <runId:string>', 'Run ID to stop.')
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ runId, json }) => {
+  .action(async ({ runId: runIdOption, json }, runIdArg) => {
+    let runId: string | undefined;
     try {
+      runId = resolveRunId(runIdArg, runIdOption);
       const config = new ConfigManager();
       const active = config.getActiveKey();
       if (!active) {
