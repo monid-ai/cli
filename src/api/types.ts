@@ -68,7 +68,8 @@ export interface PriceVariant {
  *  when its `when` gate matches the request. */
 export interface PriceTier {
   label: string;
-  when: PriceWhen;
+  /** Absent ⇒ the tier always applies. */
+  when?: PriceWhen;
   /** WHERE the metered quantity lives; absent ⇒ quantity 1. */
   selector?: { label: string; key: string; in: string };
   /** The add-on's leaf price (× the metered quantity). */

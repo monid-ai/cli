@@ -115,11 +115,11 @@ export function formatInspectResult(data: InspectResponse): void {
       console.log(`  Base:   ${formatAmount(data.price.default)} (always)`);
     }
     for (const t of data.price.tiers ?? []) {
-      const when = Object.entries(t.when)
+      const when = Object.entries(t.when ?? {})
         .map(([k, val]) => `${k}=${val}`)
         .join(', ');
       console.log(
-        `    + ${t.label}: ${formatAmount(t.price)} when ${when}`,
+        `    + ${t.label}: ${formatAmount(t.price)} ${when ? `when ${when}` : '(always)'}`,
       );
     }
   }

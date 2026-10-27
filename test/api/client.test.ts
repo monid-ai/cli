@@ -170,3 +170,88 @@ describe('MonidAPI sendDispute', () => {
     expect(out.disputeId).toBe('dp-1');
   });
 });
+
+describe('MonidAPI run: provider non-2xx', () => {
+  // Bodies rendered by the API's own `buildCompletedRunBody` (services
+  // `routes/_shared/run-response.ts`) for a sync COMPLETED run: the response
+  // status mirrors the provider's (402 → 502), the body is the whole run.
+  // 403: prod run 01M4Z0C45J63GV8C76P6YJRFTK. 502: Clay all-items-failed,
+  // vendor body from the stored output of run 01M5C69MG6RAK9DTHH9X1NAF43.
+  const RUN_403 = {
+    runId: '01M4Z0C45J63GV8C76P6YJRFTK',
+    provider: 'contactout',
+    endpoint: '/v1/email/verify',
+    status: 'COMPLETED',
+    output: null,
+    providerResponse: {
+      httpStatus: 403,
+      error: {
+        message: "You're out of credits, please email your sales manager or book a meeting: https://contactout.com/meeting?utm_source=api-out-of-credits",
+        status_code: 403,
+      },
+    },
+    price: {
+      type: 'PER_RESULT',
+      amount: { value: 0.01, currency: 'USD' },
+      notes: ['Charged only on a definitive verdict — disposable and unknown results are free.'],
+    },
+    billing: { reportedCost: { currency: 'USD', value: 0, unit: 'MICRO_DOLLAR' } },
+    resultCount: 0,
+    billedUnits: 0,
+    createdAt: '2026-10-15T05:25:47.649Z',
+    completedAt: '2026-10-15T05:25:48.178Z',
+    hints: {
+      'inspect the endpoint': 'monid inspect -p contactout -e /v1/email/verify',
+      'find other endpoints': "monid discover -q '<QUERY>'",
+      'run again': "monid run -p contactout -e /v1/email/verify -i '<BODY>' --query '<QUERY_PARAMS>' --path '<PATH_PARAMS>'",
+    },
+  };
+  const RUN_502 = {
+    runId: '01M5C69MG6RAK9DTHH9X1NAF43',
+    provider: 'clay',
+    endpoint: '/enrichment/mobile-phone',
+    status: 'COMPLETED',
+    output: null,
+    providerResponse: {
+      httpStatus: 502,
+      error: {
+        routine_run_id: 'run_0tn75sdAB7ZDqrkBC2E',
+        status: 'complete',
+        total: 1,
+        finished: 1,
+        data: [
+          {
+            id: '01M5C69MG6RAK9DTHH9X1NAF43',
+            status: 'failed',
+            error: { message: 'Function column "Find phone numbers": Find phone numbers: Not enough Clay credits 😢' },
+          },
+        ],
+      },
+    },
+    price: { type: 'PER_CALL', amount: { value: 0.568, currency: 'USD' } },
+    billing: { reportedCost: { currency: 'USD', value: 0, unit: 'MICRO_DOLLAR' } },
+    resultCount: 0,
+    billedUnits: 0,
+    createdAt: '2026-10-24T18:02:11.000Z',
+    completedAt: '2026-10-24T18:02:19.000Z',
+    hints: {
+      'inspect the endpoint': 'monid inspect -p clay -e /enrichment/mobile-phone',
+      'find other endpoints': "monid discover -q '<QUERY>'",
+      'run again': "monid run -p clay -e /enrichment/mobile-phone -i '<BODY>' --query '<QUERY_PARAMS>' --path '<PATH_PARAMS>'",
+    },
+  };
+
+  it('returns a 403 run body as the run, with the provider error', async () => {
+    stubFetch(JSON.stringify(RUN_403), 403, 'application/json');
+
+    const out = await api.run('contactout', '/v1/email/verify', { email: 'a@b.co' });
+    expect(out).toEqual(RUN_403);
+  });
+
+  it('returns a 502 run body as the run, with the provider error', async () => {
+    stubFetch(JSON.stringify(RUN_502), 502, 'application/json');
+
+    const out = await api.run('clay', '/enrichment/mobile-phone', { name: 'x' });
+    expect(out).toEqual(RUN_502);
+  });
+});
