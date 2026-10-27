@@ -74,6 +74,8 @@ monid keys list
 
 For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in output.
 
+On Windows Git Bash, set `MSYS_NO_PATHCONV=1` — otherwise Git Bash rewrites endpoint paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown` and the run fails with "Endpoint not found".
+
 ---
 
 ## When to Use Monid
