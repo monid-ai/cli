@@ -9,7 +9,7 @@ import type {
   EndpointInput,
   EndpointMetrics,
   InspectResponse,
-  MonetaryValue,
+  ControlAmount,
   NestedPrice,
   Price,
   PriceAmount,
@@ -431,8 +431,21 @@ export function formatKeysList(
 // --- Balance ---
 
 export function formatBalance(data: BalanceResponse): void {
+  // Never display a negative balance — $0.00 already means "top up".
+  const value = Math.max(0, data.balance.value);
+  const color = value > 0 ? chalk.green : chalk.yellow;
   console.log();
-  console.log(`  Balance: ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
+  console.log(`  Balance: ${color(`$${value.toFixed(2)}`)} ${data.balance.currency}`);
+  if (data.held && data.held.value > 0) {
+    console.log(`  Held:    $${data.held.value.toFixed(2)} ${chalk.gray('(reserved by runs and resources in progress)')}`);
+  }
+  if (value <= 0 && data.topup?.dashboard) {
+    console.log(
+      chalk.gray(
+        `  Top up at ${data.topup.dashboard}${data.topup.stripe ? ' or run: monid topup -a <AMOUNT>' : ''}`,
+      ),
+    );
+  }
   formatHints(data.hints ?? data.usage);
   console.log();
 }
@@ -670,13 +683,23 @@ export function formatHints(hints: Record<string, unknown> | undefined): void {
 
 // --- Control Snapshots ---
 
-function formatMonetary(m: MonetaryValue): string {
-  return `$${m.value.toFixed(4)} ${m.currency}`;
+/**
+ * A control-snapshot amount. The API sends dollars as a plain number; the
+ * older `{ value, currency }` form is still accepted. Never negative.
+ */
+export function formatMonetary(m: ControlAmount | undefined): string {
+  if (m === undefined || m === null) return '-';
+  const value = typeof m === 'number' ? m : m.value;
+  const currency = typeof m === 'number' ? 'USD' : m.currency;
+  return `$${Math.max(0, value).toFixed(2)} ${currency}`;
 }
 
 function formatRunControl(control: RunControl): void {
   console.log(`  ${chalk.gray('Control ID:')} ${control.controlId}`);
   formatControlSnapshot(control.snapshot);
+  if (control.requiredAmount !== undefined) {
+    console.log(`    ${chalk.gray('Required:')}  ${formatMonetary(control.requiredAmount)}`);
+  }
   console.log();
 }
 
@@ -692,8 +715,14 @@ function formatControlSnapshot(snapshot: ControlSnapshot): void {
       console.log(`    ${chalk.gray('Spent:')}     ${formatMonetary(snapshot.spentAmount)}`);
       break;
     case 'WORKSPACE_RUN_CAP':
-      console.log(`    ${chalk.gray('Type:')}  Workspace Run Cap`);
-      console.log(`    ${chalk.gray('Limit:')} ${formatMonetary(snapshot.limitAmount)}`);
+      console.log(`    ${chalk.gray('Type:')}      Workspace Run Cap`);
+      console.log(`    ${chalk.gray('Limit:')}     ${formatMonetary(snapshot.limitAmount)}`);
+      break;
+    case 'WORKSPACE_WALLET_BALANCE':
+      console.log(`    ${chalk.gray('Type:')}      Wallet Balance`);
+      console.log(`    ${chalk.gray('Balance:')}   ${formatMonetary(snapshot.limitAmount)}`);
+      console.log(`    ${chalk.gray('Held:')}      ${formatMonetary(snapshot.heldAmount)}`);
+      console.log(`    ${chalk.gray('Available:')} ${formatMonetary(snapshot.availableAmount)}`);
       break;
     default:
       // Unknown/future control type — render raw so it still surfaces.

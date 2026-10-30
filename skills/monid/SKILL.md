@@ -139,6 +139,7 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid resources release` | Release a resource — async and idempotent, may affect billing (`-r <resourceId>`, `-y` to skip confirmation) |
 | `monid resources events` | List a resource's lifecycle event history, oldest first (`-r <resourceId>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid balance` | Show current workspace balance |
+| `monid topup -a <dollars>` | Create a one-time checkout link to fund the wallet (needs a key with `topups:create`) |
 | `monid feedback` | Send feedback about Monid (`-t <text>`, `-r <runId>` to attach it to a run) |
 | `monid dispute` | Dispute runs that returned broken or useless results (`-r <runId>` repeatable, `--reason`, `-u <userQuery>`, `-d <discoverQuery>` and `-c <contextRunId>` repeatable) |
 | `monid whoami` | Show the authenticated user and workspace (`--workspaces` to list all workspaces you belong to) |
@@ -361,7 +362,7 @@ API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate
 | `STOPPING` | Stop requested, shutting down (transient) |
 | `COMPLETED` | Finished successfully — results available |
 | `FAILED` | Execution failed — check error details |
-| `BLOCKED` | A workspace control (budget or run cap) prevented the run — see the `controls` list for which one |
+| `BLOCKED` | A workspace control (wallet balance, budget or run cap) prevented the run — see the `controls` list for which one |
 | `STOPPED` | The run was stopped on request via `monid runs stop` |
 | `TIMED_OUT` | The run exceeded its time limit and was terminated |
 
@@ -390,7 +391,7 @@ monid runs stop -r 01HXYZ...
 
 A stop is accepted asynchronously — poll with `monid runs get -r <runId>` until the run reaches `STOPPED`.
 
-When a run is `BLOCKED`, the response includes a `controls` array of the snapshots that blocked it. Each entry has a `controlId` and a `snapshot` describing the limit — currently `WORKSPACE_BUDGET` (period plus limit / available / held / spent amounts) or `WORKSPACE_RUN_CAP` (a per-run limit amount). A `BLOCKED` run is **terminal** — it will not proceed on its own, so polling stops. **Tell the user the run was blocked by a workspace control and that they can pause or modify these controls from the dashboard at https://app.monid.ai before retrying.**
+When a run is `BLOCKED`, the response includes a `controls` array of the snapshots that blocked it. Each entry has a `controlId`, the `requiredAmount` the run needed, and a `snapshot` describing the limit — `WORKSPACE_WALLET_BALANCE` (balance / held / available), `WORKSPACE_BUDGET` (period plus limit / available / held / spent amounts) or `WORKSPACE_RUN_CAP` (a per-run limit amount). A `BLOCKED` run is **terminal** — it will not proceed on its own, so polling stops. **Follow the run's `hints`:** for a wallet block, run `monid topup -a <amount>` and give the user the checkout link it prints to pay (or send them to the dashboard wallet page the hint names), then run the same command again; for a budget or run cap, tell the user they can raise it on the dashboard rules page the hint names.
 
 ---
 
@@ -516,7 +517,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
 
-**Run status BLOCKED** — A workspace control stopped the run before it executed (e.g. a budget cap or run cap). Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until the control is changed — let the user know they can pause or adjust the control on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
+**Run status BLOCKED** — A workspace control stopped the run before it executed: not enough wallet balance, a budget, or a run cap. Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until it is resolved — for the wallet, `monid topup -a <amount>` prints a checkout link for the user to pay; for a budget or run cap, the user can raise it on the dashboard (or wait for a budget window to reset).
 
 **"Feedback is not available for this workspace yet."** — `monid feedback` isn't enabled for this workspace. Don't retry; continue without it.
 
@@ -539,6 +540,6 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 9. **Run `monid <command> --help`** to check the latest flags and usage — the CLI is the source of truth for command signatures.
 10. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.
 11. **Use health to break ties, never to filter** — prefer the healthier of two endpoints that both fit (`healthy` and `stable` are both good; avoid `degraded`). Never skip an endpoint over an `unknown` status or a missing run time; both usually just mean low traffic. See [Endpoint Health](#endpoint-health).
-12. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.
+12. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (wallet balance, budget or run cap) stopped the run; it is terminal and will not self-resolve. Follow the run's `hints`: for the wallet, run `monid topup -a <amount>` and hand the user the checkout link (or the dashboard wallet page); for a budget or run cap, tell them they can raise it on the dashboard. Then run again.
 13. **Report problems with `monid feedback`** — when the user asks, or when an endpoint fails or misbehaves on valid input, `discover` has no fit for the task, or the CLI gets in the way. Attach `-r <runId>` when it's about a run, send each issue once, and never include secrets or the user's private data. See [Feedback](#feedback).
 14. **Dispute runs with broken or useless results** — when a run's output doesn't serve the user's request even though your input was correct, file one `monid dispute` per intent with every bad run, a specific `--reason`, the user's request as `-u`, and the `-d` queries and `-c` runs you used. Don't dispute runs that went wrong because of your own input or endpoint choice. Tell the user you filed it. See [Disputes](#disputes).

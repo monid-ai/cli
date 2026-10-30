@@ -18,6 +18,7 @@ import type {
   SetupTelemetryRequest,
   RunsListResponse,
   ApiErrorResponse,
+  TopupSessionResponse,
   WhoamiResponse,
   WorkspaceListResponse,
 } from './types.js';
@@ -101,7 +102,7 @@ export class MonidAPI {
       const message =
         data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
       const code = data?.error?.code ?? statusToCode(res.status);
-      throw new MonidError(code, message, res.status);
+      throw new MonidError(code, message, res.status, data?.topup);
     }
 
     // 2xx that is not JSON is still a broken response — name it, and show
@@ -167,6 +168,14 @@ export class MonidAPI {
 
   async getBalance(): Promise<BalanceResponse> {
     return this.request('GET', '/v1/wallet/balance');
+  }
+
+  /** Create a one-time checkout session; open its `url` to pay. */
+  async createTopupSession(amount: number): Promise<TopupSessionResponse> {
+    return this.request('POST', '/v1/wallet/topup/sessions', {
+      amount,
+      currency: 'USD',
+    });
   }
 
   async listRuns(
