@@ -132,7 +132,7 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs (`-l <limit>`, `--cursor` for pagination) |
-| `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait) |
+| `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait, `-o` to save output) |
 | `monid runs stop` | Stop an in-progress run (`-r <runId>`). Not all runs can be stopped |
 | `monid resources list` | List provisioned resources (`-p <provider>`, `-t <resourceType>` (requires `-p`), `-s <state>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid resources get` | Get a resource with its live external links joined in (`-r <resourceId>`, `--no-external` to skip fetching link details) |
@@ -407,7 +407,24 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 - **Be aware:** Runs can take 1-120 seconds. Using `--wait` without a timeout can block the conversation or hit agent runtime limits.
 
 **Saving output:**
-- Always use `-o <file>` to save results once the run completes (works with both approaches)
+- With `--wait`, save results in the same command:
+
+  ```bash
+  monid run -p <provider> -e <endpoint> -i '<input-json>' -w -o results.json
+  ```
+
+- With interactive polling, start the run, poll until it completes, then save its results:
+
+  ```bash
+  monid run -p <provider> -e <endpoint> -i '<input-json>'
+  monid runs get -r <runId>
+  # Once COMPLETED:
+  monid runs get -r <runId> -o results.json
+  ```
+
+  If blocking is acceptable, `monid runs get -r <runId> -w -o results.json` waits and saves in one command.
+
+`-o` writes output available during that command. If no output is available, the CLI leaves the file untouched and prints a notice in human-readable mode. An asynchronous `run -o` without `--wait` still returns immediately; it does not download results after exiting. `--json` suppresses file-saving notices so stdout stays valid JSON. If the file cannot be written in `--json` mode, the response still prints with an `outputError` field (`path`, `message`) and the command exits with status 1.
 
 ---
 

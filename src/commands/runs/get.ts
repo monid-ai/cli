@@ -3,7 +3,7 @@ import { MonidAPI } from '../../api/client.js';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError, MonidError } from '../../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
-import { formatRunDetail } from '../../output/format.js';
+import { formatRunDetail, writeRunOutput, writeRunOutputJson } from '../../output/format.js';
 import {
   startSpinner,
   succeedSpinner,
@@ -19,8 +19,9 @@ export const runsGetCommand = new Command()
   .description('Get the status and result of a run.')
   .option('-r, --run-id <runId:string>', 'Run ID to look up.', { required: true })
   .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds).')
+  .option('-o, --output <output:string>', 'Write output to a file.')
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ runId, wait, json }) => {
+  .action(async ({ runId, wait, json, output }) => {
     try {
       const config = new ConfigManager();
       const active = config.getActiveKey();
@@ -60,8 +61,9 @@ export const runsGetCommand = new Command()
       const updateInfo = await config.getUpdateInfo();
 
       if (json) {
-        const output = updateInfo ? applyUpdateNote(result, updateInfo) : result;
-        console.log(JSON.stringify(output, null, 2));
+        const saved = output ? writeRunOutputJson(result, output) : result;
+        const out = updateInfo ? applyUpdateNote(saved, updateInfo) : saved;
+        console.log(JSON.stringify(out, null, 2));
       } else {
         if (result.status === 'COMPLETED') {
           succeedSpinner(`Run completed: ${result.runId}`);
@@ -77,8 +79,12 @@ export const runsGetCommand = new Command()
           succeedSpinner(`Run status: ${result.status}`);
         }
         formatRunDetail(result);
-        if (updateInfo) printUpdateNotice(updateInfo);
       }
+
+      // Write output to file if requested (JSON mode wrote it above)
+      if (output && !json) writeRunOutput(result, output);
+
+      if (!json && updateInfo) printUpdateNotice(updateInfo);
     } catch (err) {
       stopSpinner();
       handleError(err, json);

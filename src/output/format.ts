@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { renderTable } from './table.js';
 import { statusBadge, healthBadge, price as formatPrice } from './colors.js';
@@ -270,8 +271,48 @@ function trimZero(n: number): string {
 
 // --- Run Detail ---
 
-export function resolveOutput(data: RunDetailResponse): Record<string, unknown> | undefined {
+/** Prefer provider data, then its error body, then stored run output. */
+export function resolveOutput(
+  data: Pick<RunDetailResponse, 'providerResponse' | 'output'>,
+): Record<string, unknown> | undefined {
   return data.providerResponse?.data ?? data.providerResponse?.error ?? data.output;
+}
+
+/** Write resolved output as JSON, or explain its absence. Suppress notices in JSON mode. */
+export function writeRunOutput(
+  data: Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>,
+  path: string,
+  json?: boolean,
+): void {
+  const output = resolveOutput(data);
+  if (!output) {
+    if (!json) {
+      console.log(chalk.dim(`No output to write to ${path} (status: ${data.status}).`));
+    }
+    return;
+  }
+  writeFileSync(path, JSON.stringify(output, null, 2));
+  if (!json) {
+    console.log(`Output written to ${path}`);
+  }
+}
+
+/**
+ * JSON-mode write: on failure, report the error on the response instead of
+ * throwing, so stdout stays one JSON document that still carries the run ID.
+ */
+export function writeRunOutputJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>>(
+  data: T,
+  path: string,
+): T | (T & { outputError: { path: string; message: string } }) {
+  try {
+    writeRunOutput(data, path, true);
+    return data;
+  } catch (err) {
+    process.exitCode = 1;
+    const message = err instanceof Error ? err.message : String(err);
+    return { ...data, outputError: { path, message } };
+  }
 }
 
 export function formatRunDetail(data: RunDetailResponse): void {
