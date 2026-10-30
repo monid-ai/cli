@@ -178,6 +178,14 @@ export const runCommand = new Command()
       }
 
       if (!json && updateInfo) printUpdateNotice(updateInfo);
+
+      // A sync run the provider refused, or that timed out, came back non-2xx:
+      // shown above, but still a failure to scripts. exitCode, not exit(), so
+      // a large --json body piped out is not cut short.
+      const refused = (result.providerResponse?.httpStatus ?? 0) >= 400;
+      if (isTerminal && (refused || result.status === 'TIMED_OUT')) {
+        process.exitCode = 1;
+      }
     } catch (err) {
       stopSpinner();
       handleError(err, json);

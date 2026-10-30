@@ -63,6 +63,7 @@ export class MonidAPI {
     method: string,
     path: string,
     body?: unknown,
+    opts?: { acceptRunBody?: boolean },
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -98,6 +99,12 @@ export class MonidAPI {
     }
 
     if (!res.ok) {
+      // A sync run the provider answered keeps the provider's HTTP status
+      // (TIMED_OUT: 408), but the body is the finished run — a result to
+      // render, not an error.
+      if (opts?.acceptRunBody && isRunBody(data)) {
+        return data as T;
+      }
       const message =
         data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
       const code = data?.error?.code ?? statusToCode(res.status);
@@ -154,7 +161,7 @@ export class MonidAPI {
     const reqBody: Record<string, unknown> = { provider, endpoint };
     if (Object.keys(input).length > 0) reqBody.input = input;
 
-    return this.request('POST', '/v1/run', reqBody);
+    return this.request('POST', '/v1/run', reqBody, { acceptRunBody: true });
   }
 
   async getRun(runId: string): Promise<RunDetailResponse> {
@@ -272,6 +279,11 @@ function describeBody(res: Response, raw: string): string {
     return type ? `an empty ${type} body` : 'an empty body';
   }
   return `${type ?? 'an unknown content type'}: ${snippet}${raw.trim().length > 80 ? '…' : ''}`;
+}
+
+/** A run (`runId` + `status`), as opposed to a `{ code, message }` error. */
+function isRunBody(data: unknown): boolean {
+  return typeof data === 'object' && data !== null && 'runId' in data && 'status' in data;
 }
 
 function statusToCode(status: number): string {

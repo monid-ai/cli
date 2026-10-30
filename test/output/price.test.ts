@@ -1,11 +1,25 @@
 import { describe, it, expect } from 'bun:test';
-import { formatPriceCompact } from '../../src/output/format.js';
-import type { Price } from '../../src/api/types.js';
+import { formatInspectResult, formatPriceCompact } from '../../src/output/format.js';
+import type { InspectResponse, Price } from '../../src/api/types.js';
 
 /** Strip ANSI color codes so assertions are stable regardless of chalk state. */
 function plain(s: string): string {
   // eslint-disable-next-line no-control-regex
   return s.replace(/\u001b\[[0-9;]*m/g, '');
+}
+
+function capture(fn: () => void): string {
+  const original = console.log;
+  const lines: string[] = [];
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map((a) => String(a)).join(' '));
+  };
+  try {
+    fn();
+  } finally {
+    console.log = original;
+  }
+  return plain(lines.join('\n'));
 }
 
 describe('formatPriceCompact', () => {
@@ -173,5 +187,46 @@ describe('formatPriceCompact', () => {
     const out = plain(formatPriceCompact(p));
     expect(out).toBe('varies');
     expect(out).not.toContain('[object Object]');
+  });
+});
+
+describe('formatInspectResult pricing', () => {
+  it('renders a TIERED tier without a `when` gate as always-on', () => {
+    // Verbatim `price` of GET /public/v1/providers/firecrawl/endpoints/scrape
+    // (2026-10-27): the PDF tier has a selector and no `when`, which crashed
+    // inspect with "Cannot convert undefined or null to object".
+    const price = {
+      type: 'TIERED',
+      amount: { value: 0.001, currency: 'USD' },
+      default: { type: 'PER_CALL', amount: { value: 0.001, currency: 'USD' } },
+      tiers: [
+        {
+          label: 'JSON extraction',
+          when: { json: true },
+          price: { type: 'PER_CALL', amount: { value: 0.004, currency: 'USD' } },
+        },
+        {
+          label: 'PDF pages beyond the first',
+          selector: {
+            label: 'PDF pages beyond the first',
+            key: 'data.metadata.numPages',
+            in: 'output',
+            offset: 1,
+          },
+          price: { type: 'PER_RESULT', amount: { value: 0.001, currency: 'USD' } },
+        },
+      ],
+    } as unknown as Price;
+    const data: InspectResponse = {
+      id: 'x',
+      provider: 'firecrawl',
+      providerName: 'Firecrawl',
+      endpoint: '/scrape',
+      description: 'Scrape a URL',
+      price,
+    };
+    const out = capture(() => formatInspectResult(data));
+    expect(out).toContain('+ JSON extraction: $0.004 when json=true');
+    expect(out).toContain('+ PDF pages beyond the first: $0.001 / result (always)');
   });
 });
