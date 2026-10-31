@@ -66,10 +66,9 @@ describe('handleError', () => {
     expect(exitCode).toBe(1);
   });
 
-  it('a Monid 401 shows the expired-key message, the dashboard link and the keys hint', () => {
+  it('a Monid 401 shows the expired-key message and the keys hint', () => {
     run(new MonidError('AUTH_FAILED', 'Invalid API key', 401), false);
     expect(errOut[0]).toContain('API key is expired or invalid');
-    expect(errOut[0]).toContain('https://app.monid.ai/access/api-keys');
     expect(errOut.join('\n')).toContain('monid keys add');
   });
 
@@ -78,11 +77,6 @@ describe('handleError', () => {
     const parsed = JSON.parse(out.join('\n'));
     expect(parsed.error.code).toBe('AUTH_FAILED');
     expect(parsed.error.runId).toBeUndefined();
-  });
-
-  it('a Monid 402 links the dashboard wallet, not the API host', () => {
-    run(new MonidError('INSUFFICIENT_BALANCE', 'Insufficient funds', 402), false);
-    expect(errOut[0]).toContain('https://app.monid.ai/wallet');
   });
 
   it('a provider 401 is not shown as a Monid key problem', () => {

@@ -68,9 +68,20 @@ export function printUpdateNotice(info: UpdateInfo): void {
  * For --json mode: append the update message to the `notes` array on the
  * response object. Creates the array if it doesn't exist.
  * Returns the modified object.
+ *
+ * Top-level arrays (e.g. `monid keys list --json`) are passed through
+ * unchanged: `JSON.stringify` only serializes an array's indexed elements,
+ * so setting a `notes` property on it would be silently dropped from the
+ * output, losing the notice entirely. Print it to stderr instead so it
+ * still reaches the user without corrupting the piped-to-stdout JSON.
  */
 export function applyUpdateNote(data: unknown, info: UpdateInfo): unknown {
   if (data === null || typeof data !== 'object') return data;
+
+  if (Array.isArray(data)) {
+    printUpdateNotice(info);
+    return data;
+  }
 
   const obj = data as Record<string, unknown>;
   const message = getUpdateMessage(info).join(" ");

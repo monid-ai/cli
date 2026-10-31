@@ -543,6 +543,35 @@ export interface ResourceReleaseResponse {
   usage?: Usage;
 }
 
+// --- Feedback ---
+
+export interface FeedbackResponse {
+  feedbackId: string;
+  createdAt: string;
+}
+
+// --- Dispute ---
+
+export interface DisputeContext {
+  /** The user's intent, in their words. */
+  userQuery: string;
+  /** Request bodies as sent to `POST /v1/discover/endpoints`. */
+  discoverRequests?: Array<{ q: string; [key: string]: unknown }>;
+  /** Every run the agent knows about for this intent, disputed ones included. */
+  runIds?: string[];
+}
+
+export interface DisputeRequest {
+  runIds: string[];
+  reason: string;
+  context: DisputeContext;
+}
+
+export interface DisputeResponse {
+  disputeId: string;
+  createdAt: string;
+}
+
 // --- Public Telemetry ---
 
 export interface SetupTelemetryRequest {

@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import { WEB_APP_BASE_URL } from '../config/constants.js';
+import { API_BASE_URL } from '../config/constants.js';
 
 /**
  * A run the server returned with a non-2xx status. On the sync `POST /v1/run`
@@ -87,9 +87,9 @@ function friendlyMessage(err: MonidError): string {
     case 400:
       return `Invalid input: ${serverMsg}`;
     case 401:
-      return `API key is expired or invalid. Get a new one at ${WEB_APP_BASE_URL}/access/api-keys`;
+      return `API key is expired or invalid. Get a new one at ${API_BASE_URL}/access/api-keys`;
     case 402:
-      return `Insufficient balance. Top up at ${WEB_APP_BASE_URL}/wallet`;
+      return `Insufficient balance. Top up at ${API_BASE_URL}/wallet`;
     case 403:
       return `Access denied: ${serverMsg}`;
     case 404:

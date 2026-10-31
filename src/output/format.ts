@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { renderTable } from './table.js';
 import { statusBadge, healthBadge, price as formatPrice } from './colors.js';
@@ -43,16 +44,15 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
   // gap between them. `Health` matches the section name `inspect` prints, so
   // the same concept reads under the same word on both surfaces.
   //
-  // It sits at the end next to `Verified`: both are narrow and often empty,
-  // so grouping them confines the ragged whitespace to one edge instead of
-  // punching a hole through the middle of the table.
+  // It sits at the end: it is narrow and often empty, so the ragged
+  // whitespace stays on one edge instead of punching a hole through the
+  // middle of the table.
   const headers = [
     'Provider',
     'Endpoint',
     'Price',
     'Description',
     'Health',
-    'Verified',
   ];
   const rows = data.results.map((r) => [
     r.provider,
@@ -60,11 +60,9 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
     formatPriceCompact(r.price),
     truncate(r.description, 50),
     formatHealthCell(r.metrics),
-    hasTag(r.tags, 'verified') ? chalk.green('✓') : '',
   ]);
 
-  // Index 5 = Verified. It shifts whenever a column is added before it.
-  renderTable(headers, rows, { columns: { 5: { align: 'center' } } });
+  renderTable(headers, rows);
 
   formatHints(data.hints ?? data.usage);
 }
@@ -84,11 +82,6 @@ export function formatInspectResult(data: InspectResponse): void {
   console.log();
   console.log(chalk.bold('Description'));
   console.log(`  ${data.description}`);
-
-  if (hasTag(data.tags, 'verified')) {
-    console.log();
-    console.log(chalk.dim('✓ Verified'));
-  }
 
   if (data.summary) {
     console.log();
@@ -278,8 +271,48 @@ function trimZero(n: number): string {
 
 // --- Run Detail ---
 
-export function resolveOutput(data: RunDetailResponse): Record<string, unknown> | undefined {
+/** Prefer provider data, then its error body, then stored run output. */
+export function resolveOutput(
+  data: Pick<RunDetailResponse, 'providerResponse' | 'output'>,
+): Record<string, unknown> | undefined {
   return data.providerResponse?.data ?? data.providerResponse?.error ?? data.output;
+}
+
+/** Write resolved output as JSON, or explain its absence. Suppress notices in JSON mode. */
+export function writeRunOutput(
+  data: Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>,
+  path: string,
+  json?: boolean,
+): void {
+  const output = resolveOutput(data);
+  if (!output) {
+    if (!json) {
+      console.log(chalk.dim(`No output to write to ${path} (status: ${data.status}).`));
+    }
+    return;
+  }
+  writeFileSync(path, JSON.stringify(output, null, 2));
+  if (!json) {
+    console.log(`Output written to ${path}`);
+  }
+}
+
+/**
+ * JSON-mode write: on failure, report the error on the response instead of
+ * throwing, so stdout stays one JSON document that still carries the run ID.
+ */
+export function writeRunOutputJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>>(
+  data: T,
+  path: string,
+): T | (T & { outputError: { path: string; message: string } }) {
+  try {
+    writeRunOutput(data, path, true);
+    return data;
+  } catch (err) {
+    process.exitCode = 1;
+    const message = err instanceof Error ? err.message : String(err);
+    return { ...data, outputError: { path, message } };
+  }
 }
 
 export function formatRunDetail(data: RunDetailResponse): void {
@@ -683,12 +716,6 @@ function formatRunError(error: RunError | string | undefined): string | undefine
   if (!error.source && !error.message) return undefined;
   const message = error.message ?? 'No details provided.';
   return error.source ? `(${error.source}) ${message}` : message;
-}
-
-function hasTag(tags: string[] | undefined, tag: string): boolean {
-  if (!tags) return false;
-  const lower = tag.toLowerCase();
-  return tags.some((t) => t.toLowerCase() === lower);
 }
 
 function formatHttpStatus(status: number | undefined): string {

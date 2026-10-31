@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { MonidAPI } from '../../src/api/client.js';
 import { MonidError } from '../../src/utils/error.js';
+import { VERSION } from '../../src/config/constants.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -22,7 +23,7 @@ async function caught(p: Promise<unknown>): Promise<MonidError> {
   throw new Error('expected a rejection');
 }
 
-const api = new MonidAPI({ baseUrl: 'https://api.test', apiKey: 'monid_test_x' });
+const api = new MonidAPI({ baseUrl: 'https://api.example.test', apiKey: 'monid_test_x' });
 
 /** The bare `<html>` + CRLF error page a gateway returns — not the API. */
 const GATEWAY_HTML = '<html>\r\n<head><title>502 Bad Gateway</title></head>\r\n<body>...</body>\r\n</html>';
@@ -175,5 +176,84 @@ describe('MonidAPI non-JSON responses', () => {
 
     const out = await api.whoami() as unknown as { workspace: string };
     expect(out.workspace).toBe('Test Workspace');
+  });
+});
+
+describe('MonidAPI request headers', () => {
+  it('identifies itself as cli@<version>', async () => {
+    let sent: Headers | undefined;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      sent = new Headers(init?.headers);
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    await api.whoami();
+    expect(sent?.get('X-Monid-Client')).toBe(`cli@${VERSION}`);
+  });
+});
+
+describe('MonidAPI sendFeedback', () => {
+  function captureRequest(response: unknown, status = 201) {
+    const sent: { url?: string; method?: string; body?: unknown } = {};
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      sent.url = url;
+      sent.method = init?.method;
+      sent.body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      return new Response(JSON.stringify(response), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    return sent;
+  }
+
+  it('POSTs the text to /v1/feedback and returns the stored id', async () => {
+    const sent = captureRequest({ feedbackId: 'fb-1', createdAt: '2026-10-20T00:00:00.000Z' });
+
+    const out = await api.sendFeedback('great results');
+    expect(sent.method).toBe('POST');
+    expect(sent.url).toBe('https://api.example.test/v1/feedback');
+    expect(sent.body).toEqual({ text: 'great results' });
+    expect(out.feedbackId).toBe('fb-1');
+  });
+
+  it('includes runId only when given', async () => {
+    const sent = captureRequest({ feedbackId: 'fb-2', createdAt: '2026-10-20T00:00:00.000Z' });
+
+    await api.sendFeedback('stale posts', '01JGXYZABCDEFGHJKMNPQRSTVW');
+    expect(sent.body).toEqual({ text: 'stale posts', runId: '01JGXYZABCDEFGHJKMNPQRSTVW' });
+  });
+
+  it('surfaces a 404 for an unknown run as NOT_FOUND', async () => {
+    captureRequest({ code: 404, message: 'Run 01X not found' }, 404);
+
+    const err = await api.sendFeedback('x', '01X').then(() => null, (e: unknown) => e);
+    expect((err as MonidError).statusCode).toBe(404);
+    expect((err as MonidError).code).toBe('NOT_FOUND');
+    expect((err as MonidError).message).toBe('Run 01X not found');
+  });
+});
+
+describe('MonidAPI sendDispute', () => {
+  it('POSTs the body to /v1/dispute and returns the stored id', async () => {
+    let sent: { url?: string; method?: string; body?: unknown } = {};
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      sent = { url, method: init?.method, body: JSON.parse(String(init?.body)) };
+      return new Response(
+        JSON.stringify({ disputeId: 'dp-1', createdAt: '2026-10-20T00:00:00.000Z' }),
+        { status: 201, headers: { 'content-type': 'application/json' } },
+      );
+    }) as typeof fetch;
+
+    const body = {
+      runIds: ['run-a'],
+      reason: 'stale',
+      context: { userQuery: 'latest posts', runIds: ['run-a'] },
+    };
+    const out = await api.sendDispute(body);
+    expect(sent.method).toBe('POST');
+    expect(sent.url).toBe('https://api.example.test/v1/dispute');
+    expect(sent.body).toEqual(body);
+    expect(out.disputeId).toBe('dp-1');
   });
 });
