@@ -41,7 +41,7 @@ export const resourcesReleaseCommand = new Command()
 
         if (!confirmed) {
           console.log('Cancelled.');
-          process.exit(0);
+          return;
         }
       }
 
@@ -65,7 +65,7 @@ export const resourcesReleaseCommand = new Command()
     } catch (err) {
       stopSpinner();
       if (err instanceof MonidError && err.statusCode === 409) {
-        handleError(
+        return handleError(
           new MonidError(
             'CONFLICT',
             err.message ||

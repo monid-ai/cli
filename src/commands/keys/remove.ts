@@ -34,7 +34,7 @@ export const keysRemoveCommand = new Command()
 
         if (!confirmed) {
           console.log('Cancelled.');
-          process.exit(0);
+          return;
         }
       }
 

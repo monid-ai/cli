@@ -44,7 +44,7 @@ export const runsStopCommand = new Command()
     } catch (err) {
       stopSpinner();
       if (err instanceof MonidError && err.statusCode === 409) {
-        handleError(
+        return handleError(
           new MonidError(
             'CONFLICT',
             err.message ||

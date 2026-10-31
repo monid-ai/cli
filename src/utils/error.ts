@@ -44,10 +44,15 @@ function friendlyMessage(err: MonidError): string {
 }
 
 /**
- * Print a user-friendly error message and exit.
+ * Print a user-friendly error message and mark the process as failed.
  * If --json mode, output structured JSON error with friendly message.
+ *
+ * This sets process.exitCode rather than calling process.exit(): exiting
+ * while handles (spinner, stdin, fetch sockets) are still closing trips the
+ * libuv `UV_HANDLE_CLOSING` assertion on Windows. Callers must return after
+ * calling it; the process exits on its own once the event loop drains.
  */
-export function handleError(err: unknown, json: boolean = false): never {
+export function handleError(err: unknown, json: boolean = false): void {
   let code = 'UNKNOWN';
   let message: string;
 
@@ -62,7 +67,8 @@ export function handleError(err: unknown, json: boolean = false): never {
 
   if (json) {
     console.log(JSON.stringify({ error: { code, message } }, null, 2));
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   console.error(`${chalk.red('monid: error:')} ${message}`);
@@ -73,5 +79,5 @@ export function handleError(err: unknown, json: boolean = false): never {
     );
   }
 
-  process.exit(1);
+  process.exitCode = 1;
 }

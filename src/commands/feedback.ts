@@ -63,7 +63,7 @@ export const feedbackCommand = new Command()
       // A 404 with a runId is the API's "run not found" (its message says
       // so). Without one, the route itself is missing for this workspace.
       if (err instanceof MonidError && err.statusCode === 404 && !runId) {
-        handleError(
+        return handleError(
           new MonidError(
             'NOT_FOUND',
             'Feedback is not available for this workspace yet.',
