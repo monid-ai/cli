@@ -5,13 +5,14 @@ describe('handleError', () => {
   let exitSpy: ReturnType<typeof spyOn>;
   let errSpy: ReturnType<typeof spyOn>;
   let logSpy: ReturnType<typeof spyOn>;
-  const originalExitCode = process.exitCode;
+  // Bun does not clear the code on `= undefined`; keep a number to restore.
+  const originalExitCode = process.exitCode ?? 0;
 
   beforeEach(() => {
     exitSpy = spyOn(process, 'exit').mockImplementation((() => undefined) as never);
     errSpy = spyOn(console, 'error').mockImplementation(() => {});
     logSpy = spyOn(console, 'log').mockImplementation(() => {});
-    process.exitCode = undefined;
+    process.exitCode = 0;
   });
 
   afterEach(() => {

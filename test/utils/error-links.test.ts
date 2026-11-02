@@ -1,4 +1,4 @@
-import { describe, it, expect, spyOn } from 'bun:test';
+import { afterEach, describe, it, expect, spyOn } from 'bun:test';
 import { WEB_BASE_URL } from '../../src/config/constants.js';
 import { handleError, MonidError } from '../../src/utils/error.js';
 
@@ -6,6 +6,14 @@ import { handleError, MonidError } from '../../src/utils/error.js';
 // against the resolved constant rather than a hard-coded host: the point
 // under test is that the links use the WEB host, never the API host.
 const WEB = WEB_BASE_URL;
+
+// handleError sets process.exitCode = 1 (it no longer calls process.exit);
+// left in place it makes the test RUNNER exit 1 with every test green. Note
+// Bun does not clear the code on `= undefined`, so restore to a number.
+const originalExitCode = process.exitCode ?? 0;
+afterEach(() => {
+  process.exitCode = originalExitCode;
+});
 
 // The dashboard (keys, wallet) lives on app.monid.ai, not on the API host.
 // Pointing users at api.monid.ai/access/api-keys gave them a 404.
