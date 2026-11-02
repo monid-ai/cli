@@ -17,6 +17,10 @@ export const VERSION = getVersion();
 export const API_BASE_URL =
   process.env.MONID_API_BASE_URL ?? 'https://api.monid.ai';
 
+/** The web dashboard (keys, wallet). Distinct from the API host. */
+export const WEB_BASE_URL =
+  process.env.MONID_WEB_BASE_URL ?? 'https://app.monid.ai';
+
 export const SKILL_URL = 'https://monid.ai/SKILL.md';
 
 export const NPM_REGISTRY_URL =
