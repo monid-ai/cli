@@ -83,6 +83,11 @@ export class MonidAPI {
    * times with backoff. Everything else — above all the paid POST /v1/run —
    * is never repeated automatically, because the server may have received
    * the request before the connection dropped.
+   *
+   * The body is read HERE, inside the same try: a connection that drops after
+   * the headers arrived makes `res.text()` reject with the same bare
+   * `TypeError: terminated`, and that failure needs the same recovery (retry
+   * a read, name the cause and warn about the paid run otherwise).
    */
   private async fetchWithRecovery(
     method: string,
@@ -90,11 +95,13 @@ export class MonidAPI {
     url: string,
     init: RequestInit,
     retryable: boolean,
-  ): Promise<Response> {
+  ): Promise<{ res: Response; raw: string }> {
     const attempts = retryable ? this.maxAttempts : 1;
     for (let attempt = 1; ; attempt++) {
       try {
-        return await fetch(url, init);
+        const res = await fetch(url, init);
+        const raw = res.status === 204 ? '' : await res.text();
+        return { res, raw };
       } catch (cause) {
         if (attempt < attempts) {
           await new Promise((r) =>
@@ -120,7 +127,7 @@ export class MonidAPI {
       'X-Monid-Client': `cli@${VERSION}`,
     };
 
-    const res = await this.fetchWithRecovery(
+    const { res, raw } = await this.fetchWithRecovery(
       method,
       path,
       url,
@@ -138,7 +145,6 @@ export class MonidAPI {
     // a plain 502 into `Unexpected token '<', "<html>..." is not valid JSON`
     // and threw the status away, so an upstream blip read as a broken CLI.
     // Parse defensively and let the status drive the error instead.
-    const raw = await res.text();
     let data: (T & ApiErrorResponse) | undefined;
     let parsed = false;
     try {
