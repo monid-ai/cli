@@ -47,19 +47,23 @@ describe('wallet promo codes', () => {
     expect(out.amount).toBe(1);
   });
 
-  it("surfaces the server's message on an already-redeemed signup credit", async () => {
+  it("surfaces the server's message on an already-redeemed code", async () => {
+    // The API's real error envelope: { code: <http>, message, errorCode }
+    // (errorCode from the ApiErrorCode registry). The client surfaces the
+    // message and HTTP status; mapping `errorCode` onto MonidError.code is a
+    // separate change (today it reads the non-existent `error.code`).
     capture(
       {
         code: 409,
-        message: 'This workspace has already redeemed its signup credit.',
-        errorCode: 'SIGNUP_CREDIT_ALREADY_REDEEMED',
+        message: 'Promo code already redeemed by this workspace.',
+        errorCode: 'PROMO_CODE_REDEEMED_BY_WORKSPACE',
       },
       409,
     );
     const err = await api.redeemPromoCode('MONID-SIGNUP').then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(MonidError);
     expect((err as MonidError).statusCode).toBe(409);
-    expect((err as MonidError).message).toBe('This workspace has already redeemed its signup credit.');
+    expect((err as MonidError).message).toBe('Promo code already redeemed by this workspace.');
   });
 
   it('normalizes the code like the server and rejects empty or long codes', () => {

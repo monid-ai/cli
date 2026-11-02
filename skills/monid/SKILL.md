@@ -139,6 +139,8 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid resources release` | Release a resource — async and idempotent, may affect billing (`-r <resourceId>`, `-y` to skip confirmation) |
 | `monid resources events` | List a resource's lifecycle event history, oldest first (`-r <resourceId>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid balance` | Show current workspace balance |
+| `monid wallet promo-codes list` | List the promo codes this workspace has redeemed (`-l <limit>`, `--cursor` for pagination, `-j`) |
+| `monid wallet promo-codes redeem` | Redeem a promo code (`-c <code>`, `-j`). With an API key only the signup credit code (e.g. `MONID-SIGNUP`) can be redeemed; other codes are redeemed in the Monid dashboard |
 | `monid feedback` | Send feedback about Monid (`-t <text>`, `-r <runId>` to attach it to a run) |
 | `monid dispute` | Dispute runs that returned broken or useless results (`-r <runId>` repeatable, `--reason`, `-u <userQuery>`, `-d <discoverQuery>` and `-c <contextRunId>` repeatable) |
 | `monid whoami` | Show the authenticated user and workspace (`--workspaces` to list all workspaces you belong to) |
