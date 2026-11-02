@@ -9,7 +9,6 @@ import type {
   EndpointInput,
   EndpointMetrics,
   InspectResponse,
-  MonetaryValue,
   NestedPrice,
   Price,
   PriceAmount,
@@ -712,13 +711,24 @@ export function formatHints(hints: Record<string, unknown> | undefined): void {
 
 // --- Control Snapshots ---
 
-function formatMonetary(m: MonetaryValue): string {
-  return `$${m.value.toFixed(4)} ${m.currency}`;
+/**
+ * Format a control amount. The API sends control amounts as plain USD
+ * numbers; anything else (missing, or an unexpected shape) renders as '-'
+ * rather than crashing the whole run render. Four decimals, like run
+ * prices: many runs cost under a cent.
+ */
+function formatUsd(n: unknown): string {
+  return typeof n === 'number' && Number.isFinite(n)
+    ? `$${Math.max(0, n).toFixed(4)}`
+    : '-';
 }
 
 function formatRunControl(control: RunControl): void {
   console.log(`  ${chalk.gray('Control ID:')} ${control.controlId}`);
   formatControlSnapshot(control.snapshot);
+  if (control.requiredAmount !== undefined) {
+    console.log(`    ${chalk.gray('Required:')}  ${formatUsd(control.requiredAmount)}`);
+  }
   console.log();
 }
 
@@ -728,14 +738,20 @@ function formatControlSnapshot(snapshot: ControlSnapshot): void {
       console.log(`    ${chalk.gray('Type:')}      Workspace Budget`);
       console.log(`    ${chalk.gray('Period:')}    ${snapshot.period}`);
       console.log(`    ${chalk.gray('Window:')}    ${formatDate(snapshot.windowStart)}`);
-      console.log(`    ${chalk.gray('Limit:')}     ${formatMonetary(snapshot.limitAmount)}`);
-      console.log(`    ${chalk.gray('Available:')} ${formatMonetary(snapshot.availableAmount)}`);
-      console.log(`    ${chalk.gray('Held:')}      ${formatMonetary(snapshot.heldAmount)}`);
-      console.log(`    ${chalk.gray('Spent:')}     ${formatMonetary(snapshot.spentAmount)}`);
+      console.log(`    ${chalk.gray('Limit:')}     ${formatUsd(snapshot.limitAmount)}`);
+      console.log(`    ${chalk.gray('Available:')} ${formatUsd(snapshot.availableAmount)}`);
+      console.log(`    ${chalk.gray('Held:')}      ${formatUsd(snapshot.heldAmount)}`);
+      console.log(`    ${chalk.gray('Spent:')}     ${formatUsd(snapshot.spentAmount)}`);
       break;
     case 'WORKSPACE_RUN_CAP':
-      console.log(`    ${chalk.gray('Type:')}  Workspace Run Cap`);
-      console.log(`    ${chalk.gray('Limit:')} ${formatMonetary(snapshot.limitAmount)}`);
+      console.log(`    ${chalk.gray('Type:')}      Workspace Run Cap`);
+      console.log(`    ${chalk.gray('Limit:')}     ${formatUsd(snapshot.limitAmount)}`);
+      break;
+    case 'WORKSPACE_WALLET_BALANCE':
+      console.log(`    ${chalk.gray('Type:')}      Wallet Balance`);
+      console.log(`    ${chalk.gray('Balance:')}   ${formatUsd(snapshot.limitAmount)}`);
+      console.log(`    ${chalk.gray('Held:')}      ${formatUsd(snapshot.heldAmount)}`);
+      console.log(`    ${chalk.gray('Available:')} ${formatUsd(snapshot.availableAmount)}`);
       break;
     default:
       // Unknown/future control type — render raw so it still surfaces.
