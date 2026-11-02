@@ -211,34 +211,56 @@ export function isTerminalRunStatus(status: RunStatus): boolean {
 }
 
 // --- Control Snapshots ---
-
-export interface MonetaryValue {
-  value: number;
-  currency: string;
-}
+//
+// The API serializes every control amount as a plain USD number (dollars)
+// before it reaches a client; the raw `{ value, currency }` objects never do.
+// See services/api/routes/_shared/control-runs.ts (serializeControlSnapshotForApi).
 
 export type WorkspaceBudgetPeriod = string;
 
 export interface BudgetControlSnapshot {
   type: 'WORKSPACE_BUDGET';
   period: WorkspaceBudgetPeriod;
-  limitAmount: MonetaryValue;
-  availableAmount: MonetaryValue;
-  heldAmount: MonetaryValue;
-  spentAmount: MonetaryValue;
+  /** USD. */
+  limitAmount: number;
+  /** USD, floored at 0 by the API. */
+  availableAmount: number;
+  /** USD. */
+  heldAmount: number;
+  /** USD. */
+  spentAmount: number;
   windowStart: string;
+}
+
+export interface WalletBalanceControlSnapshot {
+  type: 'WORKSPACE_WALLET_BALANCE';
+  /** USD — the workspace balance the gate compared against. */
+  limitAmount: number;
+  /** USD, floored at 0 by the API. */
+  availableAmount: number;
+  /** USD. */
+  heldAmount: number;
+  syncedAt?: string;
 }
 
 export interface RunCapControlSnapshot {
   type: 'WORKSPACE_RUN_CAP';
-  limitAmount: MonetaryValue;
+  /** USD. */
+  limitAmount: number;
 }
 
-export type ControlSnapshot = BudgetControlSnapshot | RunCapControlSnapshot;
+export type ControlSnapshot =
+  | BudgetControlSnapshot
+  | WalletBalanceControlSnapshot
+  | RunCapControlSnapshot;
 
 /** A control snapshot that contributed to blocking a run. */
 export interface RunControl {
   controlId: string;
+  /** Same as `snapshot.type`, lifted to the top level by the API. */
+  controlType?: string;
+  /** USD — what the run needed (the gate's cost hold/estimate). */
+  requiredAmount?: number;
   snapshot: ControlSnapshot;
 }
 
