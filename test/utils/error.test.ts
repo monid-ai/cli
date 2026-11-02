@@ -84,4 +84,16 @@ describe('handleError', () => {
     expect(text).not.toContain('keeps going');
     expect(text).toContain('monid runs get -r run_done');
   });
+
+  it('names what was rate limited and how long to wait', () => {
+    handleError(new MonidError('RATE_LIMITED', 'Rate limited. Retry after 37s.', 429, { retryAfterSec: 37, limitedOn: 'tinyfish /search' }), true);
+    const out = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(out.error).toEqual({ code: 'RATE_LIMITED', message: 'Rate limited on tinyfish /search. Retry after 37s.' });
+  });
+
+  it('falls back to the old rate-limit text without a label or Retry-After', () => {
+    handleError(new MonidError('RATE_LIMITED', 'HTTP 429', 429), true);
+    const out = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(out.error.message).toBe('Rate limited. Please try again later.');
+  });
 });

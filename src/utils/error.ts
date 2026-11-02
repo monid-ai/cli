@@ -3,11 +3,19 @@ import { WEB_BASE_URL } from '../config/constants.js';
 import { PollTimeoutError } from './poll.js';
 import { isTerminalRunStatus, type RunStatus } from '../api/types.js';
 
-/** The server-side run a failed call belongs to, when one exists. */
+/** What a failed call knows beyond its HTTP status. */
 export interface RunErrorContext {
+  /** The server-side run the failure belongs to, when one exists. */
   runId?: string;
   /** Last known run status, when the failure happened while waiting. */
   status?: string;
+  /** Whole seconds from a 429's `Retry-After` header. */
+  retryAfterSec?: number;
+  /**
+   * What the command asked for (`tinyfish /search`, `discover`, ...). The
+   * API's 429 never names the rule that fired; the CLI knows the call.
+   */
+  limitedOn?: string;
 }
 
 export class MonidError extends Error {
@@ -15,6 +23,8 @@ export class MonidError extends Error {
   statusCode?: number;
   runId?: string;
   status?: string;
+  retryAfterSec?: number;
+  limitedOn?: string;
 
   constructor(
     code: string,
@@ -28,7 +38,17 @@ export class MonidError extends Error {
     this.statusCode = statusCode;
     this.runId = context?.runId;
     this.status = context?.status;
+    this.retryAfterSec = context?.retryAfterSec;
+    this.limitedOn = context?.limitedOn;
   }
+}
+
+/** `Rate limited on tinyfish /search. Retry after 37s.` */
+export function rateLimitedMessage(err: MonidError): string {
+  const on = err.limitedOn ? ` on ${err.limitedOn}` : '';
+  const wait =
+    err.retryAfterSec !== undefined ? ` Retry after ${err.retryAfterSec}s.` : ' Please try again later.';
+  return `Rate limited${on}.${wait}`;
 }
 
 /**
@@ -66,7 +86,7 @@ function friendlyMessage(err: MonidError): string {
     case 404:
       return `Not found: ${serverMsg}`;
     case 429:
-      return `Rate limited. Please try again later.`;
+      return rateLimitedMessage(err);
     default:
       if (err.statusCode && err.statusCode >= 500) {
         return serverMsg

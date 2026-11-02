@@ -118,7 +118,12 @@ export class MonidAPI {
     method: string,
     path: string,
     body?: unknown,
-    opts?: { idempotent?: boolean; acceptRunBody?: boolean },
+    opts?: {
+      idempotent?: boolean;
+      acceptRunBody?: boolean;
+      /** Human label for a rate-limit message (`discover`, `tinyfish /search`). */
+      label?: string;
+    },
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -164,7 +169,10 @@ export class MonidAPI {
       const message =
         data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
       const code = data?.error?.code ?? statusToCode(res.status);
-      throw new MonidError(code, message, res.status);
+      throw new MonidError(code, message, res.status, {
+        retryAfterSec: retryAfterSeconds(res.headers.get('retry-after')),
+        limitedOn: opts?.label ?? defaultLabel(method, path),
+      });
     }
 
     // 2xx that is not JSON is still a broken response — name it, and show
@@ -192,14 +200,14 @@ export class MonidAPI {
     // Sent only when opting IN, so the request body is byte-identical to
     // before for every existing caller (the server defaults it to false).
     if (includeUnavailable) body.includeUnavailable = true;
-    return this.request('POST', '/v1/discover', body, { idempotent: true });
+    return this.request('POST', '/v1/discover', body, { idempotent: true, label: 'discover' });
   }
 
   async inspect(
     provider: string,
     endpoint: string,
   ): Promise<InspectResponse> {
-    return this.request('POST', '/v1/inspect', { provider, endpoint }, { idempotent: true });
+    return this.request('POST', '/v1/inspect', { provider, endpoint }, { idempotent: true, label: 'inspect' });
   }
 
   async run(
@@ -217,7 +225,7 @@ export class MonidAPI {
     const reqBody: Record<string, unknown> = { provider, endpoint };
     if (Object.keys(input).length > 0) reqBody.input = input;
 
-    return this.request('POST', '/v1/run', reqBody, { acceptRunBody: true });
+    return this.request('POST', '/v1/run', reqBody, { acceptRunBody: true, label: `${provider} ${endpoint}` });
   }
 
   async getRun(runId: string): Promise<RunDetailResponse> {
@@ -380,6 +388,25 @@ function describeCause(cause: unknown): string {
     return `${cause.message}: ${code && !text.includes(code) ? `${code} ` : ''}${text}`;
   }
   return cause.message || cause.name;
+}
+
+/**
+ * `Retry-After` as whole seconds. The API sends a delay in seconds; HTTP also
+ * allows an HTTP-date, which is converted to the remaining seconds (never
+ * negative). Anything else yields undefined.
+ */
+export function retryAfterSeconds(v: string | null, now: number = Date.now()): number | undefined {
+  if (v === null || v.trim() === '') return undefined;
+  const n = Number(v);
+  if (Number.isFinite(n)) return n >= 0 ? Math.ceil(n) : undefined;
+  const at = Date.parse(v);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, Math.ceil((at - now) / 1000));
+}
+
+/** `GET /v1/runs/abc?x=1` → `GET /v1/runs/abc` */
+function defaultLabel(method: string, path: string): string {
+  return `${method} ${path.split('?')[0]}`;
 }
 
 /**
