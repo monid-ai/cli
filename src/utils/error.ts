@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import { WEB_BASE_URL } from '../config/constants.js';
 import { PollTimeoutError } from './poll.js';
-import { isTerminalRunStatus, type RunStatus } from '../api/types.js';
+import { isTerminalRunStatus, type RunStatus, type TopupHints } from '../api/types.js';
 
 /** What a failed call knows beyond its HTTP status. */
 export interface RunErrorContext {
@@ -16,6 +16,8 @@ export interface RunErrorContext {
    * API's 429 never names the rule that fired; the CLI knows the call.
    */
   limitedOn?: string;
+  /** Funding hints from a 402 body (`topup`), when the API sent them. */
+  topup?: TopupHints;
 }
 
 export class MonidError extends Error {
@@ -25,6 +27,7 @@ export class MonidError extends Error {
   status?: string;
   retryAfterSec?: number;
   limitedOn?: string;
+  topup?: TopupHints;
 
   constructor(
     code: string,
@@ -40,7 +43,23 @@ export class MonidError extends Error {
     this.status = context?.status;
     this.retryAfterSec = context?.retryAfterSec;
     this.limitedOn = context?.limitedOn;
+    this.topup = context?.topup;
   }
+}
+
+/**
+ * The 402 message: the server's own text (it names the shortfall and the
+ * right dashboard for this environment), plus the CLI command that creates a
+ * checkout link when the key may (`topup.stripe` is only sent then).
+ */
+export function insufficientFundsMessage(err: MonidError): string {
+  const dashboard = err.topup?.dashboard ?? `${WEB_BASE_URL}/wallet`;
+  const base = err.message && err.message !== 'HTTP 402'
+    ? err.message
+    : `Not enough wallet balance. Top up at ${dashboard}.`;
+  return err.topup?.stripe
+    ? `${base}\n  Or run: monid topup -a <AMOUNT>  (prints a checkout link to pay)`
+    : base;
 }
 
 /** `Rate limited on tinyfish /search. Retry after 37s.` */
@@ -71,7 +90,7 @@ export function withRunContext(err: unknown, context: RunErrorContext): MonidErr
  * Build a user-friendly message for common HTTP error codes.
  * Always returns a helpful message regardless of --json mode.
  */
-function friendlyMessage(err: MonidError): string {
+export function friendlyMessage(err: MonidError): string {
   const serverMsg = err.message;
 
   switch (err.statusCode) {
@@ -80,7 +99,7 @@ function friendlyMessage(err: MonidError): string {
     case 401:
       return `API key is expired or invalid. Get a new one at ${WEB_BASE_URL}/access/api-keys`;
     case 402:
-      return `Insufficient balance. Top up at ${WEB_BASE_URL}/wallet`;
+      return insufficientFundsMessage(err);
     case 403:
       return `Access denied: ${serverMsg}`;
     case 404:

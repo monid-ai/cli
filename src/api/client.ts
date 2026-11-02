@@ -20,6 +20,8 @@ import type {
   SetupTelemetryRequest,
   RunsListResponse,
   ApiErrorResponse,
+  TopupConfigResponse,
+  TopupSessionResponse,
   WhoamiResponse,
   WorkspaceListResponse,
 } from './types.js';
@@ -168,10 +170,14 @@ export class MonidAPI {
       }
       const message =
         data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
-      const code = data?.error?.code ?? statusToCode(res.status);
+      // The API's envelope is { code: <http>, message, errorCode? }: the
+      // documented machine code is top-level `errorCode`. Prefer it, then a
+      // nested error.code, then one derived from the HTTP status.
+      const code = data?.errorCode ?? data?.error?.code ?? statusToCode(res.status);
       throw new MonidError(code, message, res.status, {
         retryAfterSec: retryAfterSeconds(res.headers.get('retry-after')),
         limitedOn: opts?.label ?? defaultLabel(method, path),
+        topup: data?.topup,
       });
     }
 
@@ -238,6 +244,19 @@ export class MonidAPI {
 
   async getBalance(): Promise<BalanceResponse> {
     return this.request('GET', '/v1/wallet/balance');
+  }
+
+  /** Top-up limits and fees (`wallet:read`). */
+  async getTopupConfig(): Promise<TopupConfigResponse> {
+    return this.request('GET', '/v1/wallet/topup');
+  }
+
+  /** Create a one-time checkout session; open its `url` to pay. */
+  async createTopupSession(amount: number): Promise<TopupSessionResponse> {
+    return this.request('POST', '/v1/wallet/topup/sessions', {
+      amount,
+      currency: 'USD',
+    });
   }
 
   async listRuns(
