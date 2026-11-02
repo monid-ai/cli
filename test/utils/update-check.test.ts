@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'bun:test';
 import {
   applyUpdateNote,
+  fetchLatestVersion,
   getUpdateMessage,
   isNewerVersion,
   type UpdateInfo,
@@ -79,5 +80,45 @@ describe('applyUpdateNote', () => {
     const combined = lines.join('\n');
     expect(combined).toContain(info.currentVersion);
     expect(combined).toContain(info.latestVersion);
+  });
+});
+
+describe('fetchLatestVersion', () => {
+  it('gives up when the registry sends headers but never finishes the body', async () => {
+    const originalFetch = globalThis.fetch;
+    // Headers arrive at once; the body hangs until the abort signal fires.
+    globalThis.fetch = ((_url: unknown, init?: RequestInit) =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            );
+          }),
+      } as unknown as Response)) as typeof fetch;
+    try {
+      const started = Date.now();
+      const result = await fetchLatestVersion(50);
+      expect(result).toBeNull();
+      // Bounded by the timeout, not hanging on the body.
+      expect(Date.now() - started).toBeLessThan(1000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('returns the version when the body completes in time', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ version: '9.9.9' }),
+      } as unknown as Response)) as typeof fetch;
+    try {
+      expect(await fetchLatestVersion(50)).toBe('9.9.9');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
