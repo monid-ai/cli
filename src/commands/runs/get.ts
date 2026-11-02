@@ -20,7 +20,7 @@ export const runsGetCommand = new Command()
   .description('Get the status and result of a run.')
   .arguments('[runId:string]')
   .option('-r, --run-id <runId:string>', 'Run ID to look up.')
-  .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds).')
+  .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds). Put the run ID before -w, or pass it with -r: -w takes an optional number and would swallow it.')
   .option('-o, --output <output:string>', 'Write output to a file.')
   .option('-j, --json', 'Output as JSON.')
   .action(async ({ runId: runIdOption, wait, json, output }, runIdArg) => {

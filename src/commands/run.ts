@@ -189,10 +189,16 @@ export const runCommand = new Command()
 
       if (!json && updateInfo) printUpdateNotice(updateInfo);
 
-      // A sync run the provider refused, or that timed out, came back non-2xx:
-      // shown above, but still a failure to scripts. exitCode, not exit(), so
-      // a large --json body piped out is not cut short.
-      if (isTerminal && (refused || result.status === 'TIMED_OUT')) {
+      // A run the provider refused, or that timed out, is shown above but is
+      // still a failure to scripts — on the sync path AND after --wait, so
+      // `monid run … -w && next` behaves the same whichever path the endpoint
+      // takes. exitCode, not exit(), so a large --json body is not cut short.
+      // Decided from the RUN (provider status / run status), never from the
+      // HTTP status of the sync response: the only non-2xx run bodies the API
+      // sends are the provider-mirrored COMPLETED (caught by `refused`) and
+      // the 408 TIMED_OUT (caught by status), and the same statuses must exit
+      // 1 when they arrive through the 200 poll.
+      if (refused || result.status === 'TIMED_OUT' || result.status === 'FAILED') {
         process.exitCode = 1;
       }
     } catch (err) {

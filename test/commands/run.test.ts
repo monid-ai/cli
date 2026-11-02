@@ -2,14 +2,20 @@ import { describe, it, expect, afterAll } from 'bun:test';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ENTRY = new URL('../../src/index.ts', import.meta.url).pathname;
+const ENTRY = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
 
 // The sync POST /v1/run answer under test, set per case.
 let reply: { status: number; body: unknown } = { status: 200, body: {} };
+// Optional answer for GET /v1/runs/:id (the --wait poll); defaults to `reply`.
+let pollReply: { status: number; body: unknown } | undefined;
 const server = Bun.serve({
   port: 0,
-  fetch: () => Response.json(reply.body, { status: reply.status }),
+  fetch: (req) => {
+    const r = req.method === 'GET' && pollReply ? pollReply : reply;
+    return Response.json(r.body, { status: r.status });
+  },
 });
 afterAll(() => server.stop(true));
 
@@ -28,9 +34,13 @@ function configHome(): string {
   return home;
 }
 
-async function run(status: number, body: unknown): Promise<{ code: number; out: string; err: string }> {
+async function run(
+  status: number,
+  body: unknown,
+  ...extra: string[]
+): Promise<{ code: number; out: string; err: string }> {
   reply = { status, body };
-  const proc = Bun.spawn([process.execPath, ENTRY, 'run', '-p', 'contactout', '-e', '/v1/email/verify'], {
+  const proc = Bun.spawn([process.execPath, ENTRY, 'run', '-p', 'contactout', '-e', '/v1/email/verify', ...extra], {
     env: {
       ...process.env,
       XDG_CONFIG_HOME: configHome(),
@@ -71,12 +81,58 @@ describe('monid run: exit code of a sync run', () => {
   });
 
   it('a timed-out run exits 1', async () => {
-    const { code } = await run(408, { ...completed(200), status: 'TIMED_OUT', providerResponse: undefined });
+    const { code, err } = await run(408, { ...completed(200), status: 'TIMED_OUT', providerResponse: undefined });
     expect(code).toBe(1);
+    expect(err).not.toContain('monid: error'); // exit 1 by status, not by a crash
   });
 
   it('a provider 2xx exits 0', async () => {
     const { code } = await run(200, completed(200));
     expect(code).toBe(0);
+  });
+
+  it('a refusal reached through --wait exits 1 too', async () => {
+    // POST answers 202 RUNNING (async endpoint); the poll returns the refusal.
+    pollReply = { status: 200, body: completed(403, { message: 'blocked by site' }) };
+    try {
+      const { code, out, err } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '30');
+      expect(out).toContain('blocked by site');
+      expect(err).not.toContain('monid: error');
+      expect(code).toBe(1);
+    } finally {
+      pollReply = undefined;
+    }
+  });
+
+  it('a TIMED_OUT reached through --wait exits 1 too', async () => {
+    pollReply = { status: 200, body: { ...completed(200), status: 'TIMED_OUT', providerResponse: undefined } };
+    try {
+      const { code, err } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '30');
+      expect(code).toBe(1);
+      expect(err).not.toContain('monid: error'); // exit 1 by status, not by a crash
+    } finally {
+      pollReply = undefined;
+    }
+  });
+
+  it('a 2xx reached through --wait exits 0', async () => {
+    pollReply = { status: 200, body: completed(200) };
+    try {
+      const { code } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '30');
+      expect(code).toBe(0);
+    } finally {
+      pollReply = undefined;
+    }
+  });
+
+  it('a FAILED run reached through --wait exits 1', async () => {
+    pollReply = { status: 200, body: { ...completed(200), status: 'FAILED', providerResponse: undefined, error: 'pipeline crashed' } };
+    try {
+      const { code, err } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '30');
+      expect(code).toBe(1);
+      expect(err).not.toContain('monid: error');
+    } finally {
+      pollReply = undefined;
+    }
   });
 });

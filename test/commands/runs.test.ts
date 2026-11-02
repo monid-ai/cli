@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ENTRY = new URL('../../src/index.ts', import.meta.url).pathname;
+const ENTRY = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
 
 /** Run the CLI against an empty config dir: once the run ID is accepted it
  *  stops at "No active API key", before any request is sent. */
