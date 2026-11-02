@@ -407,11 +407,27 @@ export interface RunsListResponse {
 
 // --- Balance ---
 
+/** Where to fund the wallet — the same shape the 402 and the balance carry. */
+export interface TopupHints {
+  /** Checkout-session creator (POST, origin-relative); only for a key with
+   *  `topups:create`. */
+  stripe?: string;
+  /** The dashboard wallet page. */
+  dashboard?: string;
+  docs?: string;
+}
+
 export interface BalanceResponse {
   balance: {
     value: number;
     currency: string;
   };
+  /** Reserved by runs and resources in progress. */
+  held?: {
+    value: number;
+    currency: string;
+  };
+  topup?: TopupHints;
   hints?: Hints;
   /** @deprecated Use `hints` instead. */
   usage?: Usage;
@@ -642,4 +658,33 @@ export interface ApiErrorResponse {
     code?: string;
   };
   message?: string;
+  /** Documented machine code from the ApiErrorCode registry (e.g. `WALLET_INSUFFICIENT_FUNDS`). */
+  errorCode?: string;
+  /** Funding hints on a 402 `WALLET_INSUFFICIENT_FUNDS`. */
+  topup?: TopupHints;
+}
+
+// --- Top-up ---
+
+/**
+ * `GET /v1/wallet/topup` — amounts in dollars. Only the fields the CLI uses;
+ * the response also carries promotion tiers, presets and auto-reload info.
+ */
+export interface TopupConfigResponse {
+  minAmount: number;
+  /** Omitted when no cap is configured. */
+  maxAmount?: number;
+  currency: string;
+  processingFee?: {
+    type?: string;
+    rate: number;
+    description: string;
+  };
+}
+
+export interface TopupSessionResponse {
+  paymentProcessor: string;
+  sessionId: string;
+  /** Hosted checkout page — open it to pay. */
+  url: string;
 }

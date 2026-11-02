@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import chalk from 'chalk';
+import { WEB_BASE_URL } from '../config/constants.js';
 import { renderTable } from './table.js';
 import { statusBadge, healthBadge, price as formatPrice } from './colors.js';
 import type {
@@ -456,8 +457,25 @@ export function formatKeysList(
 // --- Balance ---
 
 export function formatBalance(data: BalanceResponse): void {
+  // Never display a negative balance — $0.00 already means "top up".
+  const value = Math.max(0, data.balance.value);
+  const color = value > 0 ? chalk.green : chalk.yellow;
   console.log();
-  console.log(`  Balance: ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
+  console.log(`  Balance: ${color(`$${value.toFixed(2)}`)} ${data.balance.currency}`);
+  if (data.held && data.held.value > 0) {
+    console.log(`  Held:    $${data.held.value.toFixed(2)} ${chalk.gray('(reserved by runs and resources in progress)')}`);
+  }
+  // At $0, say how to fund the wallet. `topup.stripe` is only sent to a key
+  // that may create a checkout session; `dashboard` may be absent, so fall
+  // back to the web app for this environment.
+  if (value <= 0 && (data.topup?.dashboard || data.topup?.stripe)) {
+    const dashboard = data.topup.dashboard ?? `${WEB_BASE_URL}/wallet`;
+    console.log(
+      chalk.gray(
+        `  Top up at ${dashboard}${data.topup.stripe ? ' or run: monid topup -a <AMOUNT>' : ''}`,
+      ),
+    );
+  }
   formatHints(data.hints ?? data.usage);
   console.log();
 }
