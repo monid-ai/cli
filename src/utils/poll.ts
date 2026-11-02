@@ -1,3 +1,15 @@
+/** Polling ran out of time. Carries the last result seen, so the caller
+ *  can still name the run (and its last status) it was waiting on. */
+export class PollTimeoutError<T = unknown> extends Error {
+  lastResult: T;
+
+  constructor(timeoutMs: number, lastResult: T) {
+    super(`Polling timed out after ${Math.round(timeoutMs / 1000)}s`);
+    this.name = 'PollTimeoutError';
+    this.lastResult = lastResult;
+  }
+}
+
 /**
  * Poll a function until it returns a terminal result or timeout is reached.
  * Uses exponential backoff starting at 1s, maxing at 10s.
@@ -17,9 +29,7 @@ export async function pollUntilDone<T>(
 
     const elapsed = Date.now() - startTime;
     if (elapsed >= timeoutMs) {
-      throw new Error(
-        `Polling timed out after ${Math.round(timeoutMs / 1000)}s`,
-      );
+      throw new PollTimeoutError(timeoutMs, result);
     }
 
     await new Promise((resolve) => setTimeout(resolve, delay));

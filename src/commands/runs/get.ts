@@ -1,7 +1,7 @@
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../../api/client.js';
 import { ConfigManager } from '../../config/manager.js';
-import { handleError, MonidError } from '../../utils/error.js';
+import { handleError, MonidError, withRunContext } from '../../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
 import { formatRunDetail, writeRunOutput, writeRunOutputJson } from '../../output/format.js';
 import {
@@ -11,7 +11,7 @@ import {
   updateSpinner,
   stopSpinner,
 } from '../../output/spinner.js';
-import { pollUntilDone } from '../../utils/poll.js';
+import { pollUntilDone, PollTimeoutError } from '../../utils/poll.js';
 import { isTerminalRunStatus, type RunDetailResponse } from '../../api/types.js';
 import { resolveRunId } from './run-id.js';
 
@@ -24,8 +24,10 @@ export const runsGetCommand = new Command()
   .option('-o, --output <output:string>', 'Write output to a file.')
   .option('-j, --json', 'Output as JSON.')
   .action(async ({ runId: runIdOption, wait, json, output }, runIdArg) => {
+    let runId: string | undefined;
     try {
-      const runId = resolveRunId(runIdArg, runIdOption);
+      const id = resolveRunId(runIdArg, runIdOption);
+      runId = id;
       const config = new ConfigManager();
       const active = config.getActiveKey();
       if (!active) {
@@ -53,12 +55,12 @@ export const runsGetCommand = new Command()
         }
 
         result = await pollUntilDone<RunDetailResponse>(
-          () => api.getRun(runId),
+          () => api.getRun(id),
           (r) => isTerminalRunStatus(r.status),
           timeoutMs,
         );
       } else {
-        result = await api.getRun(runId);
+        result = await api.getRun(id);
       }
 
       const updateInfo = await config.getUpdateInfo();
@@ -90,6 +92,14 @@ export const runsGetCommand = new Command()
       if (!json && updateInfo) printUpdateNotice(updateInfo);
     } catch (err) {
       stopSpinner();
+      // A --wait timeout is not a failure of the run: name it so the user
+      // can keep polling instead of re-running (and paying) it.
+      if (err instanceof PollTimeoutError && runId) {
+        err = withRunContext(err, {
+          runId,
+          status: (err.lastResult as RunDetailResponse).status,
+        });
+      }
       handleError(err, json);
     }
   });
