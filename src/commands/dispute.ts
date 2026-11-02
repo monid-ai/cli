@@ -159,7 +159,7 @@ export const disputeCommand = new Command()
         err.statusCode === 404 &&
         !/^Run \S+ not found$/.test(err.message)
       ) {
-        handleError(
+        return handleError(
           new MonidError(
             'NOT_FOUND',
             'Disputes are not available for this workspace yet.',

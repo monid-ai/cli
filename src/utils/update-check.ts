@@ -1,6 +1,9 @@
 import chalk from 'chalk';
 import { VERSION, SKILL_URL, NPM_REGISTRY_URL } from '../config/constants.js';
 
+/** How long the registry check may take, headers AND body included. */
+export const UPDATE_FETCH_TIMEOUT_MS = 2000;
+
 export interface UpdateInfo {
   currentVersion: string;
   latestVersion: string;
@@ -9,25 +12,37 @@ export interface UpdateInfo {
 /**
  * Fetch the latest published version from the npm registry.
  * Uses a 2-second timeout and silently returns null on any failure.
+ *
+ * The timer is cleared in `finally`, AFTER the body is consumed: clearing it
+ * as soon as headers arrive left `res.json()` with no deadline, so a registry
+ * that stalled mid-body could keep the process alive. That did not matter
+ * while errors ended with process.exit(); now that handleError only sets
+ * exitCode and lets the loop drain, every pending handle must bound itself.
  */
-export async function fetchLatestVersion(): Promise<string | null> {
+export async function fetchLatestVersion(
+  timeoutMs: number = UPDATE_FETCH_TIMEOUT_MS,
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-
     const res = await fetch(NPM_REGISTRY_URL, {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });
 
-    clearTimeout(timeout);
-
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Not reading the body would leave the connection open past the
+      // deadline once the timer is cleared below; abort releases it.
+      controller.abort();
+      return null;
+    }
 
     const data = (await res.json()) as { version?: string };
     return data.version ?? null;
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
