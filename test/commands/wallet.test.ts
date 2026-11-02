@@ -48,6 +48,10 @@ describe('wallet promo codes', () => {
   });
 
   it("surfaces the server's message on an already-redeemed code", async () => {
+    // The API's real error envelope: { code: <http>, message, errorCode }
+    // (errorCode from the ApiErrorCode registry). The client surfaces the
+    // message and HTTP status; mapping `errorCode` onto MonidError.code is a
+    // separate change (today it reads the non-existent `error.code`).
     capture(
       {
         code: 409,
