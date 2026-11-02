@@ -107,43 +107,7 @@ export function formatInspectResult(data: InspectResponse): void {
 
   console.log();
   console.log(chalk.bold('Pricing'));
-  console.log(
-    `  Type:   ${data.price.type}\n` +
-    `  Amount: ${formatPriceCompact(data.price)}`,
-  );
-  const flatFee = amountValue(data.price.flatFee);
-  if (flatFee) {
-    console.log(`  Flat fee: $${flatFee}`);
-  }
-  if (data.price.type === 'PER_UNIT_MATRIX' && data.price.variants?.length) {
-    console.log(`  Variants: ${data.price.variants.length} (price varies by input)`);
-    for (const v of data.price.variants) {
-      const gate = formatPriceWhen(v.when);
-      const label = v.label ? ` ${chalk.gray(`(${v.label})`)}` : '';
-      console.log(`    - ${gate ? `${gate}: ` : ''}${formatAmount(variantCell(v))}${label}`);
-    }
-  }
-  if (data.price.type === 'TIERED') {
-    // Always-on default + add-on tiers (SUMMED on top of it). A tier with
-    // a `when` gate applies when the gate matches; an ungated tier always
-    // applies and is metered by its `selector`.
-    if (data.price.default) {
-      console.log(`  Base:   ${formatAmount(data.price.default)} (always)`);
-    }
-    for (const t of data.price.tiers ?? []) {
-      const gate = formatPriceWhen(t.when);
-      console.log(
-        `    + ${t.label}: ${formatAmount(t.price)}${gate ? ` when ${gate}` : ''}`,
-      );
-    }
-  }
-
-  if (data.price.notes?.length) {
-    console.log('  Notes:');
-    data.price.notes.forEach((n) => {
-      console.log(`    - ${n}`);
-    });
-  }
+  formatInspectPricing(data.price);
 
   formatHealth(data.metrics);
 
@@ -174,6 +138,51 @@ export function formatInspectResult(data: InspectResponse): void {
   formatHints(data.hints ?? data.usage);
 
   console.log();
+}
+
+/** Render the Pricing body. A missing price (null/undefined) is tolerated. */
+function formatInspectPricing(price: Price | null | undefined): void {
+  if (!price) {
+    console.log('  Not available.');
+    return;
+  }
+  console.log(
+    `  Type:   ${price.type}\n` +
+    `  Amount: ${formatPriceCompact(price)}`,
+  );
+  const flatFee = amountValue(price.flatFee);
+  if (flatFee) {
+    console.log(`  Flat fee: $${flatFee}`);
+  }
+  if (price.type === 'PER_UNIT_MATRIX' && price.variants?.length) {
+    console.log(`  Variants: ${price.variants.length} (price varies by input)`);
+    for (const v of price.variants) {
+      const gate = formatPriceWhen(v.when);
+      const label = v.label ? ` ${chalk.gray(`(${v.label})`)}` : '';
+      console.log(`    - ${gate ? `${gate}: ` : ''}${formatAmount(variantCell(v))}${label}`);
+    }
+  }
+  if (price.type === 'TIERED') {
+    // Always-on default + add-on tiers (SUMMED on top of it). A tier with
+    // a `when` gate applies when the gate matches; an ungated tier always
+    // applies and is metered by its `selector`.
+    if (price.default) {
+      console.log(`  Base:   ${formatAmount(price.default)} (always)`);
+    }
+    for (const t of price.tiers ?? []) {
+      const gate = formatPriceWhen(t.when);
+      console.log(
+        `    + ${t.label}: ${formatAmount(t.price)}${gate ? ` when ${gate}` : ''}`,
+      );
+    }
+  }
+
+  if (price.notes?.length) {
+    console.log('  Notes:');
+    price.notes.forEach((n) => {
+      console.log(`    - ${n}`);
+    });
+  }
 }
 
 // --- Endpoint Health ---
@@ -646,8 +655,8 @@ export function formatResourceRelease(data: ResourceReleaseResponse): void {
 // --- Structured Input ---
 
 /** Check whether a value is a non-empty object (has at least one key). */
-function isNonEmpty(obj: Record<string, unknown> | undefined): obj is Record<string, unknown> {
-  return obj !== undefined && Object.keys(obj).length > 0;
+function isNonEmpty(obj: Record<string, unknown> | null | undefined): obj is Record<string, unknown> {
+  return obj != null && typeof obj === 'object' && Object.keys(obj).length > 0;
 }
 
 /**

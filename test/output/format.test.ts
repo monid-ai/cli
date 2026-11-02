@@ -4,7 +4,8 @@
 process.env.TZ = 'America/Los_Angeles';
 
 import { describe, it, expect } from 'bun:test';
-import { formatDate } from '../../src/output/format.js';
+import { formatDate, formatInspectResult } from '../../src/output/format.js';
+import type { InspectResponse } from '../../src/api/types.js';
 
 describe('formatDate', () => {
   it('renders local date WITH time (timezone shift is visible, not silent)', () => {
@@ -35,5 +36,63 @@ describe('formatDate', () => {
   it('falls back to the raw input for unparseable dates (never "Invalid Date")', () => {
     expect(formatDate('not-a-date')).toBe('not-a-date');
     expect(formatDate('')).toBe('');
+  });
+});
+
+// Ungated tiers (`when` absent) are covered by test/output/price.test.ts;
+// these are the shapes that PR left out: an explicit null gate, a null
+// price card, and null input param groups.
+describe('formatInspectResult tolerates missing fields', () => {
+  const base = {
+    id: 'x',
+    provider: 'p',
+    providerName: 'P',
+    endpoint: '/e',
+    description: 'Desc',
+  };
+
+  function render(data: unknown): string {
+    const lines: string[] = [];
+    const orig = console.log;
+    console.log = (...a: unknown[]) => {
+      lines.push(a.join(' '));
+    };
+    try {
+      formatInspectResult(data as InspectResponse);
+    } finally {
+      console.log = orig;
+    }
+    return lines.join('\n');
+  }
+
+  it('PER_UNIT_MATRIX variant with null `when`', () => {
+    const out = render({
+      ...base,
+      price: {
+        type: 'PER_UNIT_MATRIX',
+        amount: { type: 'PER_CALL', amount: '0.01', currency: 'USD' },
+        variants: [{ when: null, label: 'Cell', price: { type: 'PER_CALL', amount: '0.01', currency: 'USD' } }],
+      },
+    });
+    expect(out).toContain('Cell');
+    // No dangling "null:" or empty ": " gate prefix before the amount.
+    expect(out).not.toContain('null');
+    expect(out).not.toMatch(/-\s*:/);
+  });
+
+  it('null price still renders the rest', () => {
+    const out = render({ ...base, price: null, inputSchema: { a: 1 } });
+    expect(out).toContain('Pricing');
+    expect(out).toContain('Not available.');
+    expect(out).toContain('Input Schema');
+  });
+
+  it('input with null param groups', () => {
+    const out = render({
+      ...base,
+      price: { type: 'PER_CALL', amount: { type: 'PER_CALL', amount: '0.01', currency: 'USD' } },
+      input: { pathParams: null, queryParams: { q: { type: 'string' } }, body: null },
+    });
+    expect(out).toContain('Query Params');
   });
 });
