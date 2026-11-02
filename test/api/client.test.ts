@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test';
-import { MonidAPI } from '../../src/api/client.js';
+import { MonidAPI, retryAfterSeconds } from '../../src/api/client.js';
 import { MonidError } from '../../src/utils/error.js';
 import { VERSION } from '../../src/config/constants.js';
 
@@ -359,5 +359,45 @@ describe('MonidAPI run: provider non-2xx', () => {
 
     const out = await api.run('clay', '/enrichment/mobile-phone', { name: 'x' });
     expect(out).toEqual(RUN_502);
+  });
+});
+
+describe('MonidAPI rate limiting (429)', () => {
+  function stub429(headers: Record<string, string>, body = '{"code":429,"message":"Rate limited. Retry after 37s.","errorCode":"RATE_LIMITED"}') {
+    globalThis.fetch = (async () => new Response(body, { status: 429, headers })) as typeof fetch;
+  }
+  const caught = (p: Promise<unknown>) => p.then(() => null, (e: unknown) => e as MonidError);
+
+  it('carries Retry-After and labels a run by provider + endpoint', async () => {
+    stub429({ 'Retry-After': '37', 'RateLimit-Limit': '60', 'RateLimit-Remaining': '0', 'RateLimit-Reset': '37' });
+    const err = (await caught(api.run('tinyfish', '/search')))!;
+    expect(err.code).toBe('RATE_LIMITED');
+    expect(err.statusCode).toBe(429);
+    expect(err.retryAfterSec).toBe(37);
+    expect(err.limitedOn).toBe('tinyfish /search');
+  });
+
+  it('labels discover / inspect by command, other calls by route', async () => {
+    stub429({ 'Retry-After': '5' });
+    expect((await caught(api.discover('x')))!.limitedOn).toBe('discover');
+    expect((await caught(api.inspect('exa', '/search')))!.limitedOn).toBe('inspect');
+    expect((await caught(api.getRun('01ABC')))!.limitedOn).toBe('GET /v1/runs/01ABC');
+  });
+
+  it('a non-JSON 429 body (edge firewall) still yields RATE_LIMITED and the wait', async () => {
+    stub429({ 'Retry-After': '10' }, '<html>Too many requests</html>');
+    const err = (await caught(api.discover('x')))!;
+    expect(err.code).toBe('RATE_LIMITED');
+    expect(err.message).toBe('HTTP 429');
+    expect(err.retryAfterSec).toBe(10);
+  });
+
+  it('accepts an HTTP-date Retry-After', () => {
+    const now = Date.parse('2026-11-02T12:00:00Z');
+    expect(retryAfterSeconds('Sun, 02 Nov 2026 12:00:37 GMT', now)).toBe(37);
+    expect(retryAfterSeconds('Sun, 02 Nov 2026 11:59:00 GMT', now)).toBe(0); // in the past
+    expect(retryAfterSeconds('not a date', now)).toBeUndefined();
+    expect(retryAfterSeconds('', now)).toBeUndefined();
+    expect(retryAfterSeconds('2.2', now)).toBe(3);
   });
 });

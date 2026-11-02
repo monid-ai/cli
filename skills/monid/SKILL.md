@@ -527,7 +527,9 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **401 / Unauthorized on the command** (`monid: error: API key is expired or invalid…`) — your Monid API key is invalid or expired. Check with `monid keys list`, generate a new one at https://app.monid.ai/access/api-keys. **A `Provider Response: 401` inside a run is different:** the provider rejected its own credentials or the request; the run is COMPLETED with the provider's error body under Output. Your Monid key is fine — do not rotate it; read the body and send feedback with `-r <runId>`.
 
-**Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
+**Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), the provider's own rate limits (retry later), or request scope too large (reduce item count).
+
+**Rate limited** (`monid: error: Rate limited on <what>. Retry after Ns.`; with `--json`, `error.code` is `RATE_LIMITED`) — the workspace hit a Monid request limit, not a provider error. Wait N seconds, then retry the same command, and space out bursts of calls. Whether anything was created depends on where the 429 came from: on `monid discover`/`inspect`, or on `monid run` itself, nothing was run or charged; if it arrived **while waiting** (`-w`, or `monid runs get`), the run already exists — check `monid runs list` before running again so you don't pay twice.
 
 **Run status BLOCKED** — A workspace control stopped the run before it executed (e.g. a budget cap or run cap). Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until the control is changed — let the user know they can pause or adjust the control on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
 
