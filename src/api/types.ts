@@ -389,6 +389,32 @@ export interface BalanceResponse {
   usage?: Usage;
 }
 
+// --- Promo codes ---
+
+/** One redeemed promo code (`GET /v1/wallet/promo-codes`). */
+export interface RedeemedPromoCode {
+  /** The code, upper-case. The signup credit is `MONID-SIGNUP`. */
+  code: string;
+  /** `signup_credit` = the workspace's one signup credit. */
+  kind: 'signup_credit' | 'promo';
+  /** Credited amount in dollars. */
+  amount: number;
+  currency: string;
+  redeemedAt: string;
+}
+
+export interface PromoCodesListResponse {
+  items: RedeemedPromoCode[];
+  cursor?: string;
+}
+
+export interface RedeemPromoCodeResponse {
+  /** Credited amount in dollars. */
+  amount: number;
+  currency: string;
+  balance: { value: number; currency: string };
+}
+
 // --- Auth ---
 
 export interface AuthUser {
