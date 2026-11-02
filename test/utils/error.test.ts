@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
-import { handleError, MonidError } from '../../src/utils/error.js';
+import { handleError, MonidError, withRunContext } from '../../src/utils/error.js';
+import { PollTimeoutError } from '../../src/utils/poll.js';
 
 describe('handleError', () => {
   let exitSpy: ReturnType<typeof spyOn>;
@@ -35,5 +36,52 @@ describe('handleError', () => {
     expect(process.exitCode).toBe(1);
     const out = JSON.parse(logSpy.mock.calls[0][0] as string);
     expect(out.error.code).toBe('X');
+  });
+
+  it('names the run and its last status on a --wait timeout (json)', () => {
+    const err = withRunContext(new PollTimeoutError(30_000, { status: 'RUNNING' }), {
+      runId: 'run_abc',
+      status: 'RUNNING',
+    });
+    handleError(err, true);
+    const out = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(out.error.code).toBe('POLL_TIMEOUT');
+    expect(out.error.message).toContain('Polling timed out after 30s');
+    expect(out.error.runId).toBe('run_abc');
+    expect(out.error.status).toBe('RUNNING');
+  });
+
+  it('names the run and how to resume it on a --wait timeout (text)', () => {
+    const err = withRunContext(new PollTimeoutError(30_000, { status: 'RUNNING' }), {
+      runId: 'run_abc',
+      status: 'RUNNING',
+    });
+    handleError(err);
+    const text = errSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(text).toContain('Run ID: run_abc (status: RUNNING)');
+    expect(text).toContain('monid runs get -r run_abc');
+  });
+
+  it('does not overwrite a run id an error already carries', () => {
+    const err = withRunContext(new MonidError('X', 'bad', 500, { runId: 'run_1' }), { runId: 'run_2' });
+    expect(err.runId).toBe('run_1');
+  });
+
+  it('leaves errors without a run unchanged (json)', () => {
+    handleError(new MonidError('NOT_FOUND', 'HTTP 404', 404), true);
+    const out = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(out.error).toEqual({ code: 'NOT_FOUND', message: 'Not found: HTTP 404' });
+  });
+
+  it('does not say the run keeps going once it is terminal', () => {
+    const err = withRunContext(new Error('EACCES: permission denied, open out.json'), {
+      runId: 'run_done',
+      status: 'COMPLETED',
+    });
+    handleError(err);
+    const text = errSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(text).toContain('Run ID: run_done (status: COMPLETED)');
+    expect(text).not.toContain('keeps going');
+    expect(text).toContain('monid runs get -r run_done');
   });
 });

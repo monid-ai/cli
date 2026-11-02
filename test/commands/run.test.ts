@@ -135,4 +135,24 @@ describe('monid run: exit code of a sync run', () => {
       pollReply = undefined;
     }
   });
+
+  it('a --wait timeout names the run and how to resume it, exits 1', async () => {
+    // POST /v1/run and every GET /v1/runs/:id answer RUNNING; -w 1 times out
+    // after the first 1 s backoff sleep. (-w 0 is falsy and means "don't wait".)
+    const { code, out, err } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '1');
+    expect(code).toBe(1);
+    expect(err).toContain('Polling timed out');
+    expect(err).toContain('Run ID: 01M4Z0C45J63GV8C76P6YJRFTK (status: RUNNING)');
+    expect(err).toContain('monid runs get -r 01M4Z0C45J63GV8C76P6YJRFTK');
+    expect(out).not.toContain('Run completed');
+  });
+
+  it('a --wait timeout in --json carries runId and status', async () => {
+    const { code, out } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '1', '-j');
+    expect(code).toBe(1);
+    const parsed = JSON.parse(out);
+    expect(parsed.error.code).toBe('POLL_TIMEOUT');
+    expect(parsed.error.runId).toBe('01M4Z0C45J63GV8C76P6YJRFTK');
+    expect(parsed.error.status).toBe('RUNNING');
+  });
 });

@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
-import { handleError, MonidError } from '../utils/error.js';
+import { handleError, MonidError, withRunContext } from '../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
 import { formatRunDetail, resolveOutput, writeRunOutput, writeRunOutputJson, formatHints } from '../output/format.js';
 import {
@@ -14,7 +14,7 @@ import {
   stopSpinner,
 } from '../output/spinner.js';
 import { statusBadge } from '../output/colors.js';
-import { pollUntilDone } from '../utils/poll.js';
+import { pollUntilDone, PollTimeoutError } from '../utils/poll.js';
 import { isTerminalRunStatus, type RunDetailResponse } from '../api/types.js';
 
 export const runCommand = new Command()
@@ -39,6 +39,10 @@ export const runCommand = new Command()
     const inputFile = options.inputFile as string | undefined;
     const queryRaw = options.query as string | undefined;
     const pathRaw = options.path as string | undefined;
+
+    // Set as soon as the server has created a run, so a later failure
+    // (a poll error, a --wait timeout) can still say which run to resume.
+    let createdRun: { runId: string; status?: string } | undefined;
 
     try {
       const config = new ConfigManager();
@@ -95,6 +99,7 @@ export const runCommand = new Command()
 
       // Fire the run
       const runRes = await api.run(provider, endpoint, bodyData, queryParams, pathParams);
+      createdRun = { runId: runRes.runId, status: runRes.status };
 
       // Check if the run completed synchronously
       const isTerminal = isTerminalRunStatus(runRes.status);
@@ -148,7 +153,11 @@ export const runCommand = new Command()
           typeof wait === 'number' ? wait * 1000 : 300_000;
 
         result = await pollUntilDone<RunDetailResponse>(
-          () => api.getRun(runRes.runId),
+          async () => {
+            const r = await api.getRun(runRes.runId);
+            createdRun = { runId: runRes.runId, status: r.status };
+            return r;
+          },
           (r) => isTerminalRunStatus(r.status),
           timeoutMs,
         );
@@ -203,6 +212,13 @@ export const runCommand = new Command()
       }
     } catch (err) {
       stopSpinner();
+      if (createdRun) {
+        const status =
+          err instanceof PollTimeoutError
+            ? (err.lastResult as RunDetailResponse).status
+            : createdRun.status;
+        err = withRunContext(err, { runId: createdRun.runId, status });
+      }
       handleError(err, json);
     }
   });

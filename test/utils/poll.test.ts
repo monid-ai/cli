@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { pollUntilDone } from '../../src/utils/poll.js';
+import { pollUntilDone, PollTimeoutError } from '../../src/utils/poll.js';
 
 describe('pollUntilDone', () => {
   it('returns immediately if first result is done', async () => {
@@ -39,5 +39,16 @@ describe('pollUntilDone', () => {
     await expect(
       pollUntilDone(fn, (r) => r.status === 'COMPLETED', 100),
     ).rejects.toThrow('Polling timed out');
+  });
+
+  it('timeout error carries the last result seen', async () => {
+    const err = await pollUntilDone(
+      async () => ({ status: 'RUNNING' }),
+      (r) => r.status === 'COMPLETED',
+      100,
+    ).then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(PollTimeoutError);
+    expect((err as PollTimeoutError<{ status: string }>).lastResult.status).toBe('RUNNING');
+    expect((err as Error).message).toBe('Polling timed out after 0s');
   });
 });
