@@ -325,8 +325,11 @@ export function formatRunDetail(data: RunDetailResponse): void {
   console.log(`  Endpoint: ${data.endpoint}`);
   console.log(`  Status:   ${statusBadge(data.status)}`);
 
-  if (data.providerResponse) {
-    const status = data.providerResponse.httpStatus;
+  // The API serializes EVERY terminal run's providerResponse, and a run that
+  // never got a provider answer (TIMED_OUT, FAILED, BLOCKED) arrives as `{}`,
+  // which is truthy. Key on the status number, not the object.
+  const status = data.providerResponse?.httpStatus;
+  if (typeof status === 'number') {
     const statusColor = status >= 400 ? chalk.red : status >= 200 && status < 300 ? chalk.green : chalk.yellow;
     console.log(`  Provider Response: ${statusColor(status.toString())}`);
   }

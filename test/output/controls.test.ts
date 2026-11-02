@@ -25,6 +25,25 @@ const base = {
 // Bodies below mirror what the API's `serializeBlockedControls` emits: every
 // amount is a plain USD number, `controlType` is lifted next to `controlId`,
 // and `requiredAmount` is the gate's hold/estimate.
+describe('runs without a provider answer', () => {
+  // GET /v1/runs/:id serializes providerResponse for every terminal run;
+  // one that never reached the provider arrives as `{}` (no httpStatus).
+  it.each(['RUNNING', 'TIMED_OUT', 'FAILED', 'BLOCKED', 'STOPPED'])(
+    'renders a %s run whose providerResponse is {}',
+    (status) => {
+      const out = capture({ ...base, status, providerResponse: {} } as unknown as RunDetailResponse);
+      expect(out).toContain('run-a');
+      expect(out).not.toContain('Provider Response');
+    },
+  );
+
+  it('still shows the provider status when present', () => {
+    const out = capture({ ...base, status: 'COMPLETED', providerResponse: { httpStatus: 504 } } as unknown as RunDetailResponse);
+    expect(out).toContain('Provider Response');
+    expect(out).toContain('504');
+  });
+});
+
 describe('blocking controls', () => {
   it('renders a run cap block', () => {
     const out = capture({
