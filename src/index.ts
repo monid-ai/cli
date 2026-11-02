@@ -12,6 +12,7 @@ import { setupCommand } from './commands/setup.js';
 import { generateSessionIdCommand } from './commands/generate-session-id.js';
 import { feedbackCommand } from './commands/feedback.js';
 import { disputeCommand } from './commands/dispute.js';
+import { walletCommand } from './commands/wallet/index.js';
 
 const cli = new Command()
   .name('monid')
@@ -30,6 +31,7 @@ const cli = new Command()
   .command('whoami', whoamiCommand)
   .command('setup', setupCommand)
   .command('balance', balanceCommand)
+  .command('wallet', walletCommand)
   .command('keys', keysCommand)
   .command('generate_session_id', generateSessionIdCommand)
   .command('feedback', feedbackCommand)

@@ -8,6 +8,8 @@ import type {
   ExternalResourceDetail,
   FeedbackResponse,
   InspectResponse,
+  PromoCodesListResponse,
+  RedeemPromoCodeResponse,
   Resource,
   ResourceEventsResponse,
   ResourceListResponse,
@@ -178,6 +180,23 @@ export class MonidAPI {
     if (cursor) params.set('cursor', cursor);
     const qs = params.toString();
     return this.request('GET', `/v1/runs${qs ? `?${qs}` : ''}`);
+  }
+
+  // --- Promo codes ---
+
+  async listPromoCodes(
+    limit?: number,
+    cursor?: string,
+  ): Promise<PromoCodesListResponse> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.set('limit', String(limit));
+    if (cursor) params.set('cursor', cursor);
+    const qs = params.toString();
+    return this.request('GET', `/v1/wallet/promo-codes${qs ? `?${qs}` : ''}`);
+  }
+
+  async redeemPromoCode(code: string): Promise<RedeemPromoCodeResponse> {
+    return this.request('POST', '/v1/wallet/promo-codes/redeem', { code });
   }
 
   // --- Feedback ---

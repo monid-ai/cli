@@ -26,6 +26,8 @@ import type {
   RunDetailResponse,
   RunsListResponse,
   WhoamiResponse,
+  PromoCodesListResponse,
+  RedeemPromoCodeResponse,
 } from '../api/types.js';
 import { resourceStateBadge } from './colors.js';
 import type { CredentialKey } from '../config/types.js';
@@ -434,6 +436,46 @@ export function formatBalance(data: BalanceResponse): void {
   console.log();
   console.log(`  Balance: ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
   formatHints(data.hints ?? data.usage);
+  console.log();
+}
+
+// --- Promo codes ---
+
+/** The label a redeemed code shows: the signup credit by name. */
+export function promoCodeLabel(kind: string, code: string): string {
+  return kind === 'signup_credit' ? `Signup credit (${code})` : code;
+}
+
+export function formatPromoCodesList(data: PromoCodesListResponse): void {
+  console.log();
+  if (data.items.length === 0) {
+    console.log(chalk.gray('  No promo codes redeemed yet (no signup credit either).'));
+    console.log();
+    return;
+  }
+  const headers = ['Code', 'Amount', 'Redeemed'];
+  const rows = data.items.map((p) => [
+    chalk.bold(promoCodeLabel(p.kind, p.code)),
+    chalk.green(`$${p.amount.toFixed(2)}`),
+    formatDate(p.redeemedAt),
+  ]);
+  renderTable(headers, rows);
+  if (!data.items.some((p) => p.kind === 'signup_credit')) {
+    console.log(chalk.gray('  No signup credit on this workspace yet.'));
+  }
+  if (data.cursor) {
+    console.log(chalk.gray(`More results available. Use --cursor ${data.cursor}`));
+  }
+  console.log();
+}
+
+export function formatRedeemPromoCode(
+  code: string,
+  data: RedeemPromoCodeResponse,
+): void {
+  console.log();
+  console.log(`  Redeemed ${chalk.bold(code)}: ${chalk.green(`+$${data.amount.toFixed(2)}`)} ${data.currency}`);
+  console.log(`  Balance:  ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
   console.log();
 }
 
