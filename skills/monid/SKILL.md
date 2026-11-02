@@ -1,6 +1,6 @@
 ---
 name: monid
-version: 0.1.9
+version: 0.1.8
 description: >-
   Discover better ways to complete tasks. Proactively run `monid discover`
   before writing a scraper, before using a generic web fetch for structured
@@ -56,7 +56,7 @@ Never downgrade one side to match the other — always bring both to the latest.
 
 To use Monid's API endpoints, you need an API key. When helping a user set up Monid for the first time:
 
-1. Ask the user to create an account at https://app.monid.ai if they don't have one. If the user's message includes an `app.monid.ai` link (often in a sentence they copied from monid.ai), give them **that exact link** instead, with all its parameters — signing up through it adds their free signup credit automatically.
+1. Ask the user to create an account at https://app.monid.ai if they don't have one.
 2. Ask the user to generate an API key at https://app.monid.ai/access/api-keys.
 3. Once they have the key, offer to save it for them — ask them to paste it, then run:
 
@@ -73,32 +73,6 @@ monid keys list
 ```
 
 For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in output.
-
-### Signup Credit
-
-A new Monid account can receive **one** free signup credit — once per user and once per workspace.
-
-1. After the API key is set up, check whether it is already there:
-
-```bash
-monid wallet promo-codes
-```
-
-2. If a **Signup credit** is listed, it is done — tell the user the amount.
-3. If none is listed and the user's message mentions a promo code (the sentence copied from monid.ai names one, e.g. `MONID-SIGNUP`), redeem it:
-
-```bash
-monid wallet redeem MONID-SIGNUP
-```
-
-4. Read the answer and stop:
-   - **"already received"** — this user already got a signup credit (in another workspace).
-   - **"already redeemed"** — this workspace already has its signup credit, or was created before signup credits existed.
-   - **"not found"** — the code is not available right now.
-
-   Tell the user; don't retry, and don't guess or try other codes. A signup credit never needs anything but the code from the user's message.
-
-Never invent a promo code. If the user gave none, skip steps 3–4.
 
 ---
 
@@ -165,8 +139,6 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid resources release` | Release a resource — async and idempotent, may affect billing (`-r <resourceId>`, `-y` to skip confirmation) |
 | `monid resources events` | List a resource's lifecycle event history, oldest first (`-r <resourceId>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid balance` | Show current workspace balance |
-| `monid wallet promo-codes` | List the promo codes this workspace has redeemed; the signup credit shows as "Signup credit" (`-l <limit>`, `--cursor`, `-j`) |
-| `monid wallet redeem` | Redeem a promo code (`<code>`, `-j`). With an API key only the signup credit code works; see [Signup Credit](#signup-credit) |
 | `monid feedback` | Send feedback about Monid (`-t <text>`, `-r <runId>` to attach it to a run) |
 | `monid dispute` | Dispute runs that returned broken or useless results (`-r <runId>` repeatable, `--reason`, `-u <userQuery>`, `-d <discoverQuery>` and `-c <contextRunId>` repeatable) |
 | `monid whoami` | Show the authenticated user and workspace (`--workspaces` to list all workspaces you belong to) |

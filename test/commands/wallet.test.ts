@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'bun:test';
 import { MonidAPI } from '../../src/api/client.js';
-import { normalizeRedeemCode } from '../../src/commands/wallet/redeem.js';
+import { normalizeRedeemCode } from '../../src/commands/wallet/promo-codes/redeem.js';
 import { promoCodeLabel } from '../../src/output/format.js';
 import { MonidError } from '../../src/utils/error.js';
 

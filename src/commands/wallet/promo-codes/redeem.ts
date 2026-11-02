@@ -1,10 +1,10 @@
 import { Command } from '@cliffy/command';
-import { MonidAPI } from '../../api/client.js';
-import { ConfigManager } from '../../config/manager.js';
-import { handleError, MonidError } from '../../utils/error.js';
-import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
-import { formatRedeemPromoCode } from '../../output/format.js';
-import { startSpinner, succeedSpinner, stopSpinner } from '../../output/spinner.js';
+import { MonidAPI } from '../../../api/client.js';
+import { ConfigManager } from '../../../config/manager.js';
+import { handleError, MonidError } from '../../../utils/error.js';
+import { printUpdateNotice, applyUpdateNote } from '../../../utils/update-check.js';
+import { formatRedeemPromoCode } from '../../../output/format.js';
+import { startSpinner, succeedSpinner, stopSpinner } from '../../../output/spinner.js';
 
 /** Trim + upper-case, the server's own normalization; empty is an error. */
 export function normalizeRedeemCode(raw: string): string {
@@ -18,14 +18,14 @@ export function normalizeRedeemCode(raw: string): string {
   return code;
 }
 
-export const walletRedeemCommand = new Command()
+export const walletPromoCodesRedeemCommand = new Command()
   .name('redeem')
   .description(
     'Redeem a promo code for this workspace. With an API key only the signup credit code (e.g. MONID-SIGNUP) can be redeemed; other codes are redeemed in the Monid dashboard.',
   )
-  .arguments('<code:string>')
+  .option('-c, --code <code:string>', 'The promo code to redeem.', { required: true })
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ json }, rawCode) => {
+  .action(async ({ code: rawCode, json }) => {
     try {
       const code = normalizeRedeemCode(rawCode);
       const config = new ConfigManager();
