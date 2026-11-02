@@ -30,7 +30,12 @@ export async function fetchLatestVersion(
       headers: { Accept: 'application/json' },
     });
 
-    if (!res.ok) return null;
+    if (!res.ok) {
+      // Not reading the body would leave the connection open past the
+      // deadline once the timer is cleared below; abort releases it.
+      controller.abort();
+      return null;
+    }
 
     const data = (await res.json()) as { version?: string };
     return data.version ?? null;

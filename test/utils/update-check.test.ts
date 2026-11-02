@@ -108,6 +108,23 @@ describe('fetchLatestVersion', () => {
     }
   });
 
+  it('cancels the body of a non-OK response instead of leaving it open', async () => {
+    const originalFetch = globalThis.fetch;
+    let aborted = false;
+    globalThis.fetch = ((_url: unknown, init?: RequestInit) => {
+      init?.signal?.addEventListener('abort', () => {
+        aborted = true;
+      });
+      return Promise.resolve({ ok: false, status: 503, json: () => new Promise(() => {}) } as unknown as Response);
+    }) as typeof fetch;
+    try {
+      expect(await fetchLatestVersion(50)).toBeNull();
+      expect(aborted).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('returns the version when the body completes in time', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (() =>
