@@ -13,16 +13,19 @@ import {
 } from '../../output/spinner.js';
 import { pollUntilDone } from '../../utils/poll.js';
 import { isTerminalRunStatus, type RunDetailResponse } from '../../api/types.js';
+import { resolveRunId } from './run-id.js';
 
 export const runsGetCommand = new Command()
   .name('get')
   .description('Get the status and result of a run.')
-  .option('-r, --run-id <runId:string>', 'Run ID to look up.', { required: true })
-  .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds).')
+  .arguments('[runId:string]')
+  .option('-r, --run-id <runId:string>', 'Run ID to look up.')
+  .option('-w, --wait [timeout:number]', 'Wait for completion (timeout in seconds). Put the run ID before -w, or pass it with -r: -w takes an optional number and would swallow it.')
   .option('-o, --output <output:string>', 'Write output to a file.')
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ runId, wait, json, output }) => {
+  .action(async ({ runId: runIdOption, wait, json, output }, runIdArg) => {
     try {
+      const runId = resolveRunId(runIdArg, runIdOption);
       const config = new ConfigManager();
       const active = config.getActiveKey();
       if (!active) {
