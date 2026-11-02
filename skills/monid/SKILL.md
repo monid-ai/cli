@@ -132,8 +132,8 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs (`-l <limit>`, `--cursor` for pagination) |
-| `monid runs get` | Get run status and results (`-r <runId>`, `-w` to wait, `-o` to save output) |
-| `monid runs stop` | Stop an in-progress run (`-r <runId>`). Not all runs can be stopped |
+| `monid runs get` | Get run status and results (`-r <runId>` or the run ID as a positional argument, `-w` to wait, `-o` to save output) |
+| `monid runs stop` | Stop an in-progress run (`-r <runId>` or positional). Not all runs can be stopped |
 | `monid resources list` | List provisioned resources (`-p <provider>`, `-t <resourceType>` (requires `-p`), `-s <state>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid resources get` | Get a resource with its live external links joined in (`-r <resourceId>`, `--no-external` to skip fetching link details) |
 | `monid resources release` | Release a resource — async and idempotent, may affect billing (`-r <resourceId>`, `-y` to skip confirmation) |
@@ -142,15 +142,14 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid wallet promo-codes list` | List the promo codes this workspace has redeemed (`-l <limit>`, `--cursor` for pagination, `-j`) |
 | `monid wallet promo-codes redeem` | Redeem a promo code (`-c <code>`, `-j`). With an API key only the signup credit code (e.g. `MONID-SIGNUP`) can be redeemed; other codes are redeemed in the Monid dashboard |
 | `monid feedback` | Send feedback about Monid (`-t <text>`, `-r <runId>` to attach it to a run) |
-| `monid dispute` | Dispute runs that returned broken or useless results (`-r <runId>` repeatable, `--reason`, `-u <userQuery>`, `-d <discoverQuery>` and `-c <contextRunId>` repeatable) |
+| `monid dispute` | Dispute the charge for runs that did not deliver (`-r <runId>` repeatable, `--reason`, `-u <userQuery>`, `-d <discoverQuery>` and `-c <contextRunId>` repeatable) |
 | `monid whoami` | Show the authenticated user and workspace (`--workspaces` to list all workspaces you belong to) |
 | `monid setup` | Complete CLI setup after installation (no API key required) |
-| `monid generate_session_id` | Generate a new short random session ID (no API key required) |
 | `monid keys add` | Add an API key (`-k <key> -l <label>`) |
 | `monid keys list` | Show configured keys |
 | `monid keys remove` | Remove a key (`-l <label>`, `-f` to skip confirmation) |
 | `monid keys activate` | Switch the active key (`-l <label>`) |
-| `monid generate_session_id` | Generate a short session ID. Run once at the start of each session and reuse the ID for the rest of the session |
+| `monid generate_session_id` | Generate a short session ID (no API key required). Run once at the start of each session and reuse the ID for the rest of the session |
 
 Most commands accept `-j/--json` for machine-readable JSON output.
 
@@ -202,7 +201,7 @@ monid run -p apify -e /apidojo/tweet-scraper \
 
 **When to use `--wait`:**
 - Async/background tasks where blocking is acceptable
-- You can set a timeout: `-w 30` (wait max 30 seconds)
+- You can set a timeout: `-w 30` (wait max 30 seconds). If the run is not finished by then, the command exits with an error that shows the run ID — the run itself keeps going, so continue with `monid runs get -r <runId>`.
 - Be aware: runs can take 1-120 seconds, so this may block the conversation or hit runtime timeouts
 
 ---
@@ -339,6 +338,8 @@ To control costs:
 - **If the endpoint accepts an array** (e.g. `searchTerms`, `hashtags`, `urls`), pass only one element unless the user explicitly requests multiple.
 - **Check the input schema** from `monid inspect` to identify which parameters control volume.
 
+**Reading the Pricing section of `inspect`:** `Base` always applies. A line `+ <tier>: <price> when k=v` is added on top when your input matches `k=v`. A `+` line **without** `when` always applies and is metered by quantity — e.g. `+ Results above 10: $0.001 / result` means each result past the tenth costs $0.001 more. `Not available.` means the endpoint has no price card; do not assume it is free.
+
 ---
 
 ## Key Management
@@ -361,7 +362,7 @@ API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate
 | `READY` | Queued, waiting to start |
 | `RUNNING` | Actively executing |
 | `STOPPING` | Stop requested, shutting down (transient) |
-| `COMPLETED` | Finished successfully — results available |
+| `COMPLETED` | Finished — the provider answered. Check `Provider Response` for the result: 2xx means results are available, 4xx/5xx means the provider returned an error (see below) |
 | `FAILED` | Execution failed — check error details |
 | `BLOCKED` | A workspace control (budget or run cap) prevented the run — see the `controls` list for which one |
 | `STOPPED` | The run was stopped on request via `monid runs stop` |
@@ -370,6 +371,8 @@ API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate
 Status values are always UPPERCASE and case-sensitive — compare against `COMPLETED`, never `completed`.
 
 Runs typically take **1 to 120 seconds** depending on the endpoint and data volume.
+
+**COMPLETED with a provider error.** `COMPLETED` means the provider answered — including with an error. `Provider Response` shows the provider's HTTP status; when it is 4xx/5xx, the `Output` section holds the provider's error body. For a synchronous `monid run` the command exits with code 1 in that case, but it is still a run: it has a run ID, `-o` saves the error body, and `--json` prints the run. Read the body before acting: if the provider says the input was wrong, fix the input against `inspect`; if it refused or blocked a valid request, send feedback with `-r <runId>`. Provider errors are not billed. This is **not** a problem with your Monid key.
 
 **Stopping a run**
 
@@ -392,7 +395,7 @@ monid runs stop -r 01HXYZ...
 
 A stop is accepted asynchronously — poll with `monid runs get -r <runId>` until the run reaches `STOPPED`.
 
-When a run is `BLOCKED`, the response includes a `controls` array of the snapshots that blocked it. Each entry has a `controlId` and a `snapshot` describing the limit — currently `WORKSPACE_BUDGET` (period plus limit / available / held / spent amounts) or `WORKSPACE_RUN_CAP` (a per-run limit amount). A `BLOCKED` run is **terminal** — it will not proceed on its own, so polling stops. **Tell the user the run was blocked by a workspace control and that they can pause or modify these controls from the dashboard at https://app.monid.ai before retrying.**
+When a run is `BLOCKED`, the response includes a `controls` array of the snapshots that blocked it. Each entry has a `controlId`, a `controlType`, the `requiredAmount` the run needed, and a `snapshot` describing the limit — `WORKSPACE_BUDGET` (period plus limit / available / held / spent amounts), `WORKSPACE_RUN_CAP` (a per-run limit amount), or `WORKSPACE_WALLET_BALANCE` (the workspace balance was lower than the run's estimated cost). All amounts are in USD. A `BLOCKED` run is **terminal** — it will not proceed on its own, so polling stops. **Tell the user the run was blocked by a workspace control and that they can pause or modify these controls from the dashboard at https://app.monid.ai before retrying.** For a wallet-balance block, the fix is a top-up at https://app.monid.ai/wallet.
 
 ---
 
@@ -405,7 +408,7 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 **When to use `--wait`:**
 - **Async/background tasks** where blocking is acceptable (e.g., scheduled jobs, non-interactive scripts)
-- **Set a timeout** if needed: `-w 30` waits max 30 seconds, then returns current status
+- **Set a timeout** if needed: `-w 30` waits up to 30 seconds. If the run is not finished by then, the command exits with an error (`Polling timed out after 30s`) that includes the run ID — the run keeps going, so continue with `monid runs get -r <runId>`.
 - **Be aware:** Runs can take 1-120 seconds. Using `--wait` without a timeout can block the conversation or hit agent runtime limits.
 
 **Saving output:**
@@ -432,32 +435,39 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 ## Feedback
 
-`monid feedback` sends free-text feedback straight to the Monid team. Use it to report problems and gaps so they get fixed:
+`monid feedback` sends free-text feedback straight to the Monid team. It is how the team learns what the tools are like to use from an agent's side: what helped and why, what was confusing, what was slow, what was missing. The more often you send it, the better the catalog and this skill get.
+
+**You should send feedback at the end of each task that used Monid** — one short message about the tools you used. Good experiences count as much as problems: say what worked and why it helped, as well as what did not. Attach a run with `-r <runId>` when the feedback is about a specific run; any representative run from the task is fine.
 
 ```bash
-# General feedback
-monid feedback -t "discover returns no endpoints for 'glassdoor reviews'"
+# What worked, and why it helped
+monid feedback -r 01HXYZ... \
+  -t "tweet-scraper returned clean, deduplicated posts in 8s; the maxItems cap made the cost predictable"
 
-# Feedback about a specific run — attach the run ID
+# A rough edge on a specific run
 monid feedback -r 01HXYZ... \
   -t "Run COMPLETED but the output is empty for a valid profile URL"
+
+# Not tied to a run
+monid feedback -t "discover returns no endpoints for 'glassdoor reviews'"
 # -> Feedback sent (ID: ...). Thank you!
 ```
 
-**When to send feedback:**
+**Worth sending:**
 
-- **The user asks you to** — e.g. "tell Monid this endpoint is broken." Pass along what they said, in their words.
-- **An endpoint misbehaves** — a run `FAILED` or `TIMED_OUT` with valid input, or doesn't match its `inspect` schema. Pass `-r <runId>` so the team can see the run. If a run returned broken or useless results, [file a dispute](#disputes) instead.
-- **The catalog has a gap** — `discover` had nothing that fit the task, and you had to fall back to something else.
-- **The CLI or docs got in the way** — a confusing error, a misleading hint, or an instruction in this skill that turned out wrong.
+- **What helped** — an endpoint that fit the task well, output that was easy to use, a hint that saved a step, pricing that was clear.
+- **What got in the way** — confusing input parameters, high latency, output that did not match the `inspect` schema or description, a run that `FAILED` or `TIMED_OUT` with valid input.
+- **What was missing** — `discover` had nothing that fit the task and you had to fall back to something else.
+- **The CLI or this skill** — a confusing error, a misleading hint, or an instruction here that turned out wrong.
+- **What the user said** — when the user comments on Monid or asks you to pass something on ("tell Monid this endpoint is broken"), send it in their words.
 
 **How to write it:**
 
-- One issue per message, sent once. Don't repeat it for every retry.
 - Be specific: the endpoint (`-p`/`-e`), what you expected, what happened, and the error text if there was one.
+- One topic per message, sent once. Don't repeat it for every retry.
 - **Never include secrets or private data** — no API keys, credentials, or personal information from the user's task. Describe the input's shape instead of pasting it.
 - Text is trimmed and must be 1–4000 characters.
-- Feedback is not a support channel. Nothing comes back beyond the feedback ID, so keep helping the user with the task.
+- Mention it to the user in one line, e.g. "Sent feedback to Monid about the tweet-scraper endpoint." Nothing comes back beyond the feedback ID, so keep helping the user with the task.
 
 If the response is **"Feedback is not available for this workspace yet."**, feedback isn't enabled for this workspace — skip it and carry on. A **"Run ... not found"** error means the `-r` run ID is wrong; check it with `monid runs list`.
 
@@ -465,7 +475,11 @@ If the response is **"Feedback is not available for this workspace yet."**, feed
 
 ## Disputes
 
-`monid dispute` flags runs whose results were broken or useless for what the user asked, so the Monid team can review them. Unlike feedback, a dispute is tied to runs and carries the context needed to judge them: the user's intent, the discover queries you tried, and every run you made for that intent.
+`monid dispute` asks the Monid team to review the **charge** for runs whose results did not serve the purpose they were paid for. It is about the money, not about reporting a problem: the work was done and billed, but it did not achieve the goal, and the charge feels unfair. For anything else, use [`monid feedback`](#feedback).
+
+**You should file a dispute when** a run was charged (`cost.value` greater than 0) and its results were unusable for the request even though your input was correct: empty output for a valid query, stale or wrong data, the wrong entity, or output that does not match the endpoint's description. Either side can start it — the user asking for it, or you judging that the charge is unfair. Tell the user what happened, what the run cost, and that you filed a dispute.
+
+**A dispute is decided on its context.** The reviewer only sees what you send: the goal (`-u`), what each run returned and why that does not serve the goal (`--reason`), the searches you tried (`-d`) and the other runs you made (`-c`). Without that detail a refund cannot be guaranteed, so take the time to fill every field properly.
 
 ```bash
 monid dispute -r 01HXYZ... -r 01HXZA... \
@@ -477,30 +491,27 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 | Option | What to pass |
 |--------|-------------|
-| `-r, --run-id` | **Required.** A run you're disputing. Repeat for several (up to 100). |
+| `-r, --run-id` | **Required.** A charged run you're disputing. Repeat for several (up to 100). |
 | `--reason` | **Required.** What was wrong with the results, concretely. |
 | `-u, --user-query` | **Required.** The user's intent, in their words. |
 | `-d, --discover-query` | A query you passed to `monid discover` for this intent. Repeat for each one. |
 | `-c, --context-run-id` | Another run you made for this intent, such as a retry or a run that worked. Repeat for each one. Disputed runs are included automatically. |
 
-**When to dispute a run:**
+**Not a dispute:**
 
-- It returned results that don't serve the user's request even though your input was correct: empty output for a valid query, stale or wrong data, the wrong entity, or output that doesn't match the endpoint's description.
-
-**When not to:**
-
+- **The run cost $0.** Provider errors and failed runs are not billed, so there is nothing to refund — send feedback instead.
 - **The mistake was yours.** You passed the wrong input, picked the wrong endpoint, or asked for too few results. Fix it and run again.
 - **The user changed their mind** or wants something different from what they asked for.
-- **It's not about a run's results** — use [`monid feedback`](#feedback) for catalog gaps, CLI problems, or general comments.
+- **It's not about a charge** — catalog gaps, CLI problems, or general comments belong in [`monid feedback`](#feedback).
 
 **How to file it:**
 
-- One dispute per intent. Put every bad run for that intent in the same dispute instead of filing one per run.
-- Make `--reason` specific: what you expected, what came back, and why it's unusable. "Bad results" is not enough.
-- Pass the `-d` queries and `-c` runs you used, so the reviewer can see what you tried.
+- One dispute per intent. Put every charged run for that intent in the same dispute instead of filing one per run.
+- Make `--reason` specific: what you expected, what came back, and why it's unusable for the goal. "Bad results" is not enough and will not get a refund.
+- Put the user's goal in `-u` in their words, and pass every `-d` query and `-c` run you used, so the reviewer can see what you tried and that the input was right.
 - **Never include secrets** such as API keys or credentials. Quote the user's request as `-u`, but leave out unrelated personal details.
 - Every text field is trimmed and must be 1–4000 characters. Duplicate run IDs are removed for you.
-- Tell the user you filed a dispute, and for which runs. Nothing else comes back beyond the dispute ID, so keep helping with the task.
+- Tell the user you filed a dispute, for which runs, and that nothing comes back beyond the dispute ID — then keep helping with the task.
 
 **Errors:**
 
@@ -519,6 +530,12 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 **Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
 
 **Run status BLOCKED** — A workspace control stopped the run before it executed (e.g. a budget cap or run cap). Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until the control is changed — let the user know they can pause or adjust the control on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
+
+**"Network request failed …"** — The connection dropped. Reads (`discover`, `inspect`, `runs get`) were already retried, so try again shortly. For `monid run`, the run may or may not have been created: **check `monid runs list` before running again** so the user is not charged twice.
+
+**"Polling timed out after Ns"** — `--wait` ran out of time; the run is still going. The error shows the run ID; continue with `monid runs get -r <runId>`.
+
+**"Endpoint not found" on Windows Git Bash** — Git Bash rewrites paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown`. Set `MSYS_NO_PATHCONV=1` before running `monid`.
 
 **"Feedback is not available for this workspace yet."** — `monid feedback` isn't enabled for this workspace. Don't retry; continue without it.
 
@@ -542,5 +559,6 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 10. **Check the Hints block** — when a command's output includes a `Hints` section, read it and act on it. It carries suggested next steps, endpoint relationships, and caveats from the server — prefer its suggestions over guessing your next command.
 11. **Use health to break ties, never to filter** — prefer the healthier of two endpoints that both fit (`healthy` and `stable` are both good; avoid `degraded`). Never skip an endpoint over an `unknown` status or a missing run time; both usually just mean low traffic. See [Endpoint Health](#endpoint-health).
 12. **Surface BLOCKED runs to the user** — a `BLOCKED` status means a workspace control (budget or run cap) stopped the run; it is terminal and will not self-resolve. Report which control blocked it (from the `controls` list) and tell the user they can pause or modify that control on the dashboard (https://app.monid.ai) before retrying.
-13. **Report problems with `monid feedback`** — when the user asks, or when an endpoint fails or misbehaves on valid input, `discover` has no fit for the task, or the CLI gets in the way. Attach `-r <runId>` when it's about a run, send each issue once, and never include secrets or the user's private data. See [Feedback](#feedback).
-14. **Dispute runs with broken or useless results** — when a run's output doesn't serve the user's request even though your input was correct, file one `monid dispute` per intent with every bad run, a specific `--reason`, the user's request as `-u`, and the `-d` queries and `-c` runs you used. Don't dispute runs that went wrong because of your own input or endpoint choice. Tell the user you filed it. See [Disputes](#disputes).
+13. **Send feedback after each task that used Monid** — one short message about what helped and what got in the way: confusing inputs, latency, output that didn't match, catalog gaps, or this skill. Positive feedback is as useful as problems. Attach `-r <runId>` for a representative run, never include secrets or the user's private data, and mention to the user that you sent it. See [Feedback](#feedback).
+14. **Dispute a charge that didn't deliver, with full context** — when a paid run's results were unusable despite correct input, file one `monid dispute` per intent with every charged run, a specific `--reason` (what you expected, what came back, why it fails the goal), the user's request as `-u`, and the `-d` queries and `-c` runs you used; a thin dispute cannot be refunded. Runs that cost $0, and runs that went wrong because of your own input or endpoint choice, are not disputes. Tell the user you filed it. See [Disputes](#disputes).
+15. **Exit code 1 means the run failed or the provider refused** — read the `Output` and `Provider Response` before retrying. A retried paid run is paid again; a provider error run is not billed.
