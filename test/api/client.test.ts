@@ -170,3 +170,109 @@ describe('MonidAPI sendDispute', () => {
     expect(out.disputeId).toBe('dp-1');
   });
 });
+
+describe('MonidAPI network failures', () => {
+  const fast = { apiKey: 'test-key', baseUrl: 'https://api.example.test', retryDelayMs: 0 };
+
+  /** Reject like undici: TypeError('fetch failed') with the reason in cause. */
+  function failedFetch(): TypeError {
+    const cause = Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+    return new TypeError('fetch failed', { cause });
+  }
+
+  it('retries a read after a transient fetch failure and succeeds', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      if (calls < 3) throw failedFetch();
+      return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const res = await new MonidAPI(fast).whoami();
+    expect(res).toEqual({ ok: true } as never);
+    expect(calls).toBe(3);
+  });
+
+  it('throws a descriptive NETWORK_ERROR once read retries are exhausted', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      throw failedFetch();
+    }) as typeof fetch;
+
+    const err = await new MonidAPI(fast).getRun('run_1').then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(MonidError);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).toContain('ECONNRESET');
+    expect((err as MonidError).message).toContain('GET /v1/runs/run_1');
+    expect(calls).toBe(3);
+  });
+
+  it('never retries the paid run request and points to runs list', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      throw failedFetch();
+    }) as typeof fetch;
+
+    const err = await new MonidAPI(fast).run('anyapi', '/tiktok.search_keyword', { q: 'x' })
+      .then(() => null, (e: unknown) => e);
+    expect(calls).toBe(1);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).toContain('monid runs list');
+  });
+
+  /** Headers arrived, then the socket dropped while the body was streaming. */
+  function bodyDropResponse(): Response {
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      text: async () => {
+        throw new TypeError('terminated', {
+          cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }),
+        });
+      },
+    } as unknown as Response;
+  }
+
+  it('retries a read whose body stream drops after the headers', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      if (calls === 1) return bodyDropResponse();
+      return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    const res = await new MonidAPI(fast).whoami();
+    expect(res).toEqual({ ok: true } as never);
+    expect(calls).toBe(2);
+  });
+
+  it('does not retry a run whose body stream drops, and still names the cause', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return bodyDropResponse();
+    }) as typeof fetch;
+
+    const err = await new MonidAPI(fast).run('anyapi', '/x', { q: 'x' })
+      .then(() => null, (e: unknown) => e);
+    expect(calls).toBe(1);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).toContain('UND_ERR_SOCKET');
+    expect((err as MonidError).message).toContain('monid runs list');
+  });
+
+  it('retries read-only discover', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      if (calls === 1) throw failedFetch();
+      return new Response('{"results":[]}', { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    await new MonidAPI(fast).discover('web search results');
+    expect(calls).toBe(2);
+  });
+});

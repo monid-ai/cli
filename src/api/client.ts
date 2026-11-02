@@ -52,19 +52,73 @@ export class MonidPublicAPI {
   }
 }
 
+/** Total attempts (first try included) for a safely repeatable request. */
+const DEFAULT_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_DELAY_MS = 250;
+
 export class MonidAPI {
   private baseUrl: string;
   private apiKey: string;
+  private maxAttempts: number;
+  private retryDelayMs: number;
 
-  constructor(config: { baseUrl?: string; apiKey: string }) {
+  constructor(config: {
+    baseUrl?: string;
+    apiKey: string;
+    maxAttempts?: number;
+    retryDelayMs?: number;
+  }) {
     this.baseUrl = (config.baseUrl ?? API_BASE_URL).replace(/\/+$/, '');
     this.apiKey = config.apiKey;
+    this.maxAttempts = Math.max(1, config.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+    this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  }
+
+  /**
+   * `fetch` rejects with a bare `TypeError: fetch failed` when the request
+   * never completed (DNS, reset, TLS, timeout). Surfacing that verbatim gave
+   * users `UNKNOWN: fetch failed` with no cause and no hint what to do next.
+   *
+   * Requests that are safe to repeat (`retryable`: reads) are retried a few
+   * times with backoff. Everything else — above all the paid POST /v1/run —
+   * is never repeated automatically, because the server may have received
+   * the request before the connection dropped.
+   *
+   * The body is read HERE, inside the same try: a connection that drops after
+   * the headers arrived makes `res.text()` reject with the same bare
+   * `TypeError: terminated`, and that failure needs the same recovery (retry
+   * a read, name the cause and warn about the paid run otherwise).
+   */
+  private async fetchWithRecovery(
+    method: string,
+    path: string,
+    url: string,
+    init: RequestInit,
+    retryable: boolean,
+  ): Promise<{ res: Response; raw: string }> {
+    const attempts = retryable ? this.maxAttempts : 1;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const res = await fetch(url, init);
+        const raw = res.status === 204 ? '' : await res.text();
+        return { res, raw };
+      } catch (cause) {
+        if (attempt < attempts) {
+          await new Promise((r) =>
+            setTimeout(r, this.retryDelayMs * 2 ** (attempt - 1)),
+          );
+          continue;
+        }
+        throw networkError(method, path, cause, attempt, retryable);
+      }
+    }
   }
 
   private async request<T>(
     method: string,
     path: string,
     body?: unknown,
+    opts?: { idempotent?: boolean },
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -73,11 +127,13 @@ export class MonidAPI {
       'X-Monid-Client': `cli@${VERSION}`,
     };
 
-    const res = await fetch(url, {
+    const { res, raw } = await this.fetchWithRecovery(
       method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+      path,
+      url,
+      { method, headers, body: body ? JSON.stringify(body) : undefined },
+      method === 'GET' || opts?.idempotent === true,
+    );
 
     if (res.status === 204) {
       return undefined as T;
@@ -89,7 +145,6 @@ export class MonidAPI {
     // a plain 502 into `Unexpected token '<', "<html>..." is not valid JSON`
     // and threw the status away, so an upstream blip read as a broken CLI.
     // Parse defensively and let the status drive the error instead.
-    const raw = await res.text();
     let data: (T & ApiErrorResponse) | undefined;
     let parsed = false;
     try {
@@ -131,14 +186,14 @@ export class MonidAPI {
     // Sent only when opting IN, so the request body is byte-identical to
     // before for every existing caller (the server defaults it to false).
     if (includeUnavailable) body.includeUnavailable = true;
-    return this.request('POST', '/v1/discover', body);
+    return this.request('POST', '/v1/discover', body, { idempotent: true });
   }
 
   async inspect(
     provider: string,
     endpoint: string,
   ): Promise<InspectResponse> {
-    return this.request('POST', '/v1/inspect', { provider, endpoint });
+    return this.request('POST', '/v1/inspect', { provider, endpoint }, { idempotent: true });
   }
 
   async run(
@@ -276,6 +331,49 @@ export class MonidAPI {
       `/v1/resources/${encodeURIComponent(resourceId)}/release`,
     );
   }
+}
+
+/** Name the failure and say what is safe to do next. */
+function networkError(
+  method: string,
+  path: string,
+  cause: unknown,
+  attempts: number,
+  retried: boolean,
+): MonidError {
+  const detail = describeCause(cause);
+  const tried = attempts > 1 ? ` after ${attempts} attempts` : '';
+  let hint: string;
+  if (retried) {
+    hint = 'This looks like a transient network problem; try again shortly.';
+  } else if (method === 'POST' && path === '/v1/run') {
+    hint =
+      'No response was received, so the run may or may not have been created ' +
+      "(runs are paid and are not retried automatically). Check 'monid runs list' " +
+      'before running again.';
+  } else {
+    hint =
+      'No response was received, so the request may or may not have been applied. ' +
+      'Check its effect before repeating it.';
+  }
+  const err = new MonidError(
+    'NETWORK_ERROR',
+    `Network request failed${tried} (${method} ${path}): ${detail}. ${hint}`,
+  );
+  (err as Error & { cause?: unknown }).cause = cause;
+  return err;
+}
+
+/** `fetch failed` hides the real reason in `cause` (e.g. ECONNRESET). */
+function describeCause(cause: unknown): string {
+  if (!(cause instanceof Error)) return String(cause);
+  const inner = (cause as Error & { cause?: unknown }).cause;
+  if (inner instanceof Error) {
+    const code = (inner as Error & { code?: string }).code;
+    const text = inner.message || inner.name;
+    return `${cause.message}: ${code && !text.includes(code) ? `${code} ` : ''}${text}`;
+  }
+  return cause.message || cause.name;
 }
 
 /**
