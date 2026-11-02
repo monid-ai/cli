@@ -132,7 +132,7 @@ Each command supports `--help` for full usage. Here's what's available:
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs (`-l <limit>`, `--cursor` for pagination) |
-| `monid runs get` | Get run status and results (`-r <runId>` or the run ID as a positional argument, `-w` to wait, `-o` to save output) |
+| `monid runs get` | Get run status and results (`-r <runId>` or the run ID as a positional argument, `-w` to wait, `-o` to save output). With the positional form put the ID before `-w`: `-w` takes an optional number and would swallow it |
 | `monid runs stop` | Stop an in-progress run (`-r <runId>` or positional). Not all runs can be stopped |
 | `monid resources list` | List provisioned resources (`-p <provider>`, `-t <resourceType>` (requires `-p`), `-s <state>`, `-l <limit>`, `--cursor` for pagination) |
 | `monid resources get` | Get a resource with its live external links joined in (`-r <resourceId>`, `--no-external` to skip fetching link details) |
@@ -525,7 +525,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **"No active API key"** — No key configured. Run `monid keys add -k <key> -l main`.
 
-**401 / Unauthorized** — API key is invalid or expired. Check with `monid keys list`, generate a new one at https://app.monid.ai/access/api-keys.
+**401 / Unauthorized on the command** (`monid: error: API key is expired or invalid…`) — your Monid API key is invalid or expired. Check with `monid keys list`, generate a new one at https://app.monid.ai/access/api-keys. **A `Provider Response: 401` inside a run is different:** the provider rejected its own credentials or the request; the run is COMPLETED with the provider's error body under Output. Your Monid key is fine — do not rotate it; read the body and send feedback with `-r <runId>`.
 
 **Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), rate limits (retry later), or request scope too large (reduce item count).
 
@@ -535,7 +535,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **"Polling timed out after Ns"** — `--wait` ran out of time; the run is still going. The error shows the run ID; continue with `monid runs get -r <runId>`.
 
-**"Endpoint not found" on Windows Git Bash** — Git Bash rewrites paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown`. Set `MSYS_NO_PATHCONV=1` before running `monid`.
+**"Endpoint not found" on Windows Git Bash** — Git Bash rewrites paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown`. Prefix the command so the variable reaches the `monid` process: `MSYS_NO_PATHCONV=1 monid run -p … -e /web/scrape/markdown …` (or `export MSYS_NO_PATHCONV=1` once per shell).
 
 **"Feedback is not available for this workspace yet."** — `monid feedback` isn't enabled for this workspace. Don't retry; continue without it.
 
