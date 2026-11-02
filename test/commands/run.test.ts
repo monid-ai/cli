@@ -28,7 +28,7 @@ function configHome(): string {
   return home;
 }
 
-async function run(status: number, body: unknown): Promise<{ code: number; out: string }> {
+async function run(status: number, body: unknown): Promise<{ code: number; out: string; err: string }> {
   reply = { status, body };
   const proc = Bun.spawn([process.execPath, ENTRY, 'run', '-p', 'contactout', '-e', '/v1/email/verify'], {
     env: {
@@ -39,8 +39,11 @@ async function run(status: number, body: unknown): Promise<{ code: number; out: 
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const out = await new Response(proc.stdout).text();
-  return { code: await proc.exited, out };
+  const [out, err] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return { code: await proc.exited, out, err };
 }
 
 // Shape of the API's sync COMPLETED body (prod run 01M4Z0C45J63GV8C76P6YJRFTK).
@@ -58,9 +61,12 @@ const completed = (httpStatus: number, error?: unknown) => ({
 
 describe('monid run: exit code of a sync run', () => {
   it('a provider refusal prints the run and its reason, and exits 1', async () => {
-    const { code, out } = await run(403, completed(403, { message: "You're out of credits", status_code: 403 }));
+    const { code, out, err } = await run(403, completed(403, { message: "You're out of credits", status_code: 403 }));
     expect(out).toContain('01M4Z0C45J63GV8C76P6YJRFTK');
     expect(out).toContain("You're out of credits");
+    // Not a green "Run completed" line: the spinner names the provider error.
+    expect(out + err).toContain('provider error 403');
+    expect(out + err).not.toMatch(/Run completed: 01M4Z/);
     expect(code).toBe(1);
   });
 

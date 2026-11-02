@@ -156,12 +156,21 @@ export const runCommand = new Command()
 
       const updateInfo = await config.getUpdateInfo();
 
+      // The provider answered with an error (4xx/5xx). The run is COMPLETED —
+      // provider errors are data, not failures — but it is not a success to
+      // show a green check for, and scripts need a non-zero exit code.
+      const refused = (result.providerResponse?.httpStatus ?? 0) >= 400;
+
       if (json) {
         const saved = output ? writeRunOutputJson(result, output) : result;
         const out = updateInfo ? applyUpdateNote(saved, updateInfo) : saved;
         console.log(JSON.stringify(out, null, 2));
       } else {
-        if (result.status === 'COMPLETED') {
+        if (result.status === 'COMPLETED' && refused) {
+          failSpinner(
+            `Run completed with provider error ${result.providerResponse?.httpStatus}: ${result.runId}`,
+          );
+        } else if (result.status === 'COMPLETED') {
           succeedSpinner(`Run completed: ${result.runId}`);
         } else if (result.status === 'BLOCKED') {
           failSpinner(`Run blocked: ${result.runId}`);
@@ -183,7 +192,6 @@ export const runCommand = new Command()
       // A sync run the provider refused, or that timed out, came back non-2xx:
       // shown above, but still a failure to scripts. exitCode, not exit(), so
       // a large --json body piped out is not cut short.
-      const refused = (result.providerResponse?.httpStatus ?? 0) >= 400;
       if (isTerminal && (refused || result.status === 'TIMED_OUT')) {
         process.exitCode = 1;
       }
