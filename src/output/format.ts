@@ -323,19 +323,38 @@ export function writeRunOutput(
 /**
  * JSON-mode write: on failure, report the error on the response instead of
  * throwing, so stdout stays one JSON document that still carries the run ID.
+ *
+ * On success the body that went to the file is left out of the returned
+ * document (it can be many megabytes) and `outputFile` names where it was
+ * saved; everything else on the run (ID, status, cost, HTTP status) stays.
+ * When there was no output to save, the response is returned unchanged.
  */
 export function writeRunOutputJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>>(
   data: T,
   path: string,
-): T | (T & { outputError: { path: string; message: string } }) {
+): T | (T & { outputFile: string }) | (T & { outputError: { path: string; message: string } }) {
   try {
     writeRunOutput(data, path, true);
-    return data;
   } catch (err) {
     process.exitCode = 1;
     const message = err instanceof Error ? err.message : String(err);
     return { ...data, outputError: { path, message } };
   }
+  if (!resolveOutput(data)) return data;
+
+  // Drop only the field resolveOutput() picked, i.e. the one the file holds.
+  const slim: Record<string, unknown> = { ...data, outputFile: path };
+  const pr = data.providerResponse;
+  if (pr?.data !== undefined && pr.data !== null) {
+    const { data: _saved, ...rest } = pr;
+    slim.providerResponse = rest;
+  } else if (pr?.error !== undefined && pr.error !== null) {
+    const { error: _saved, ...rest } = pr;
+    slim.providerResponse = rest;
+  } else {
+    delete slim.output;
+  }
+  return slim as T & { outputFile: string };
 }
 
 export function formatRunDetail(data: RunDetailResponse): void {

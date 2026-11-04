@@ -76,8 +76,12 @@ describe('runs get output options', () => {
         expect(getRun).toHaveBeenCalledWith('run-a');
         expect(getRun).toHaveBeenCalledTimes(1);
         expect(readFileSync(outputPath, 'utf-8')).toBe(JSON.stringify(data, null, 2));
-        if (json) expect(JSON.parse(stdout())).toEqual(result);
-        else expect(stdout()).toContain(`Output written to ${outputPath}`);
+        if (json) {
+          // The saved body stays out of stdout; the file path replaces it.
+          expect(JSON.parse(stdout())).toEqual({
+            ...result, providerResponse: { httpStatus: 200 }, outputFile: outputPath,
+          });
+        } else expect(stdout()).toContain(`Output written to ${outputPath}`);
       });
     }
   }
@@ -132,8 +136,11 @@ describe('run output before returning', () => {
 
       expect(getRun).not.toHaveBeenCalled();
       expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual(data);
-      if (json) expect(JSON.parse(stdout())).toEqual(result);
-      else {
+      if (json) {
+        expect(JSON.parse(stdout())).toEqual({
+          ...result, providerResponse: { httpStatus: 200 }, outputFile: outputPath,
+        });
+      } else {
         expect(stdout()).toContain(`Output written to ${outputPath}`);
         expect(stdout()).not.toContain('monid runs get');
       }
@@ -169,6 +176,43 @@ describe('run output before returning', () => {
     expect(getRun).not.toHaveBeenCalled();
     expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual({ items: [6] });
     expect(JSON.parse(stdout()).status).toBe('COMPLETED');
+  });
+});
+
+describe('JSON stdout when the file was written', () => {
+  const big = 'x'.repeat(100_000);
+
+  it('omits the saved provider body from stdout but keeps the run summary', async () => {
+    run.mockResolvedValue(response({ providerResponse: { httpStatus: 200, data: { html: big } } }));
+
+    await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-o', outputPath, '--json']);
+
+    expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual({ html: big });
+    expect(stdout()).not.toContain(big);
+    const parsed = JSON.parse(stdout());
+    expect(parsed).toMatchObject({ runId: 'run-a', status: 'COMPLETED', outputFile: outputPath });
+    expect(parsed.providerResponse).toEqual({ httpStatus: 200 });
+  });
+
+  it('omits a saved stored output and a saved provider error body', async () => {
+    getRun.mockResolvedValue(response({ output: { html: big } }));
+    await cli.parse(['runs', 'get', '-r', 'run-a', '-o', outputPath, '--json']);
+    expect(stdout()).not.toContain(big);
+    expect(JSON.parse(stdout())).toMatchObject({ runId: 'run-a', outputFile: outputPath });
+    expect(JSON.parse(stdout()).output).toBeUndefined();
+
+    logs.mockClear();
+    getRun.mockResolvedValue(response({ providerResponse: { httpStatus: 500, error: { message: big } } }));
+    await cli.parse(['runs', 'get', '-r', 'run-a', '-o', outputPath, '--json']);
+    expect(stdout()).not.toContain(big);
+    expect(JSON.parse(stdout()).providerResponse).toEqual({ httpStatus: 500 });
+  });
+
+  it('still prints the full run without -o', async () => {
+    const result = response({ providerResponse: { httpStatus: 200, data: { html: 'small' } } });
+    run.mockResolvedValue(result);
+    await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '--json']);
+    expect(JSON.parse(stdout())).toEqual(result);
   });
 });
 
