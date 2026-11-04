@@ -430,7 +430,7 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
   If blocking is acceptable, `monid runs get -r <runId> -w -o results.json` waits and saves in one command.
 
-`-o` writes output available during that command. If no output is available, the CLI leaves the file untouched and prints a notice in human-readable mode. An asynchronous `run -o` without `--wait` still returns immediately; it does not download results after exiting. `--json` suppresses file-saving notices so stdout stays valid JSON. If the file cannot be written in `--json` mode, the response still prints with an `outputError` field (`path`, `message`) and the command exits with status 1.
+`-o` writes output available during that command. If no output is available, the CLI leaves the file untouched and prints a notice in human-readable mode. An asynchronous `run -o` without `--wait` still returns immediately; it does not download results after exiting. `--json` suppresses file-saving notices so stdout stays valid JSON. With `--json` and `-o`, the body saved to the file is left out of stdout and an `outputFile` field names the file, so large responses are not printed twice. If the file cannot be written in `--json` mode, the response still prints with an `outputError` field (`path`, `message`) and the command exits with status 1.
 
 ---
 
