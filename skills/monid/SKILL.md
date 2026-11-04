@@ -542,6 +542,8 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **"Endpoint not found" on Windows Git Bash** — Git Bash rewrites paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown`. Prefix the command so the variable reaches the `monid` process: `MSYS_NO_PATHCONV=1 monid run -p … -e /web/scrape/markdown …` (or `export MSYS_NO_PATHCONV=1` once per shell).
 
+**"running scripts is disabled on this system" in PowerShell** — npm's global `monid.ps1` shim is blocked by the execution policy. Call `monid.cmd` instead (e.g. `monid.cmd discover …`), or allow local scripts once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`. The CLI only writes progress to stderr when it is a terminal, so redirected output no longer shows `NativeCommandError` noise; real errors still go to stderr.
+
 **"Feedback is not available for this workspace yet."** — `monid feedback` isn't enabled for this workspace. Don't retry; continue without it.
 
 **"Disputes are not available for this workspace yet."** — `monid dispute` isn't enabled for this workspace. Don't retry; continue without it.
