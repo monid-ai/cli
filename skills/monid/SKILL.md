@@ -432,6 +432,16 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 `-o` writes output available during that command. If no output is available, the CLI leaves the file untouched and prints a notice in human-readable mode. An asynchronous `run -o` without `--wait` still returns immediately; it does not download results after exiting. `--json` suppresses file-saving notices so stdout stays valid JSON. If the file cannot be written in `--json` mode, the response still prints with an `outputError` field (`path`, `message`) and the command exits with status 1.
 
+**Large responses arrive as a download envelope.** When a provider response is too large to return inline, the run output (and so the `-o` file) is not the provider body. It is an envelope with `download_link`, `content_type`, `link_expires_at` and `file_expires_at` (it can sit under a `data` key). The service decides what counts as too large; small responses stay inline. Check for `download_link` before parsing, then fetch the body before `link_expires_at`:
+
+```bash
+monid run -p <provider> -e <endpoint> -i '<input-json>' -w -o result.json
+# result.json -> { "download_link": "https://…", "content_type": "application/json", "link_expires_at": …, "file_expires_at": … }
+curl -o body.json '<download_link from result.json>'
+```
+
+In human-readable mode the CLI prints a note after writing an envelope to `-o`; with `--json` it stays silent, so detect the envelope yourself. There is no flag that always downloads.
+
 ---
 
 ## Feedback
