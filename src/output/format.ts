@@ -301,6 +301,27 @@ export function resolveOutput(
   return data.providerResponse?.data ?? data.providerResponse?.error ?? data.output;
 }
 
+/**
+ * Large responses are not returned inline: the output is a download envelope
+ * (`download_link`, `content_type`, `link_expires_at`, `file_expires_at`)
+ * and the body must be fetched from the link. The envelope may sit at the
+ * top level of the output or under a `data` key. Returns it, or undefined
+ * for an ordinary inline body.
+ *
+ * Exported for tests.
+ */
+export function findDownloadEnvelope(
+  output: Record<string, unknown> | undefined,
+): { download_link: string; link_expires_at?: string } | undefined {
+  const candidates = [output, output?.data];
+  for (const c of candidates) {
+    if (c && typeof c === 'object' && typeof (c as Record<string, unknown>).download_link === 'string') {
+      return c as { download_link: string; link_expires_at?: string };
+    }
+  }
+  return undefined;
+}
+
 /** Write resolved output as JSON, or explain its absence. Suppress notices in JSON mode. */
 export function writeRunOutput(
   data: Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>,
@@ -317,6 +338,19 @@ export function writeRunOutput(
   writeFileSync(path, JSON.stringify(output, null, 2));
   if (!json) {
     console.log(`Output written to ${path}`);
+    const envelope = findDownloadEnvelope(output);
+    if (envelope) {
+      console.log(
+        chalk.yellow(
+          `Note: the response was too large to return inline, so ${path} holds a download link, not the response body.`,
+        ),
+      );
+      console.log(
+        chalk.yellow(
+          `Fetch the body from "download_link"${envelope.link_expires_at ? ` before ${envelope.link_expires_at}` : ''}, e.g. curl -o body.json '<download_link>'.`,
+        ),
+      );
+    }
   }
 }
 
