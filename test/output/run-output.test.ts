@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll, afterEach } from 'bun:test';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { writeRunOutput, writeRunOutputJson, findOverflowLink } from '../../src/output/format.js';
+import { writeRunOutput, writeRunOutputJson, findOverflowLink, resolveOutputSource } from '../../src/output/format.js';
 import type { RunDetailResponse } from '../../src/api/types.js';
 
 const dir = mkdtempSync(join(tmpdir(), 'monid-run-output-'));
@@ -152,5 +152,32 @@ describe('writeRunOutput downloads an overflowed body', () => {
     expect('outputError' in saved && saved.outputError.message).toContain('network down');
     expect(JSON.parse(readFileSync(path, 'utf-8'))).toEqual({ data: envelope });
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('resolveOutputSource', () => {
+  it('prefers provider data, then the error body, then stored output', () => {
+    const data = { a: 1 };
+    const error = { b: 2 };
+    const output = { c: 3 };
+    expect(resolveOutputSource({ providerResponse: { httpStatus: 200, data, error }, output }))
+      .toEqual({ field: 'data', body: data });
+    expect(resolveOutputSource({ providerResponse: { httpStatus: 500, error }, output }))
+      .toEqual({ field: 'error', body: error });
+    expect(resolveOutputSource({ providerResponse: { httpStatus: 200 }, output }))
+      .toEqual({ field: 'output', body: output });
+    expect(resolveOutputSource({ providerResponse: { httpStatus: 200 }, output: null })).toBeUndefined();
+  });
+});
+
+describe('writeRunOutputJson after a successful write', () => {
+  it('drops a legacy providerResponse.data body and keeps the rest', async () => {
+    const path = join(dir, 'legacy.json');
+    const output = { other: true };
+    const run = makeRun({ output, providerResponse: { httpStatus: 200, data: { items: [1] } } });
+    const saved = await writeRunOutputJson(run, path);
+    expect(JSON.parse(readFileSync(path, 'utf-8'))).toEqual({ items: [1] });
+    const { providerResponse: _pr, ...rest } = run;
+    expect(saved).toEqual({ ...rest, output, providerResponse: { httpStatus: 200 }, outputFile: path });
   });
 });
