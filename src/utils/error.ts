@@ -18,6 +18,8 @@ export interface RunErrorContext {
   limitedOn?: string;
   /** Funding hints from a 402 body (`topup`), when the API sent them. */
   topup?: TopupHints;
+  /** The error body's `hints`: what to do next, rendered for the CLI. */
+  hints?: Record<string, unknown>;
 }
 
 export class MonidError extends Error {
@@ -28,6 +30,7 @@ export class MonidError extends Error {
   retryAfterSec?: number;
   limitedOn?: string;
   topup?: TopupHints;
+  hints?: Record<string, unknown>;
 
   constructor(
     code: string,
@@ -44,6 +47,7 @@ export class MonidError extends Error {
     this.retryAfterSec = context?.retryAfterSec;
     this.limitedOn = context?.limitedOn;
     this.topup = context?.topup;
+    this.hints = context?.hints;
   }
 }
 
@@ -57,7 +61,8 @@ export function insufficientFundsMessage(err: MonidError): string {
   const base = err.message && err.message !== 'HTTP 402'
     ? err.message
     : `Not enough wallet balance. Top up at ${dashboard}.`;
-  return err.topup?.stripe
+  // The API's own "top up the wallet" hint already names the command.
+  return err.topup?.stripe && !err.hints?.['top up the wallet']
     ? `${base}\n  Or run: monid topup -a <AMOUNT>  (prints a checkout link to pay)`
     : base;
 }
@@ -144,6 +149,7 @@ export function handleError(err: unknown, json: boolean = false): void {
     const out: Record<string, unknown> = { code, message };
     if (context.runId) out.runId = context.runId;
     if (context.status) out.status = context.status;
+    if (context.hints) out.hints = context.hints;
     console.log(JSON.stringify({ error: out }, null, 2));
     process.exitCode = 1;
     return;
@@ -167,11 +173,29 @@ export function handleError(err: unknown, json: boolean = false): void {
     );
   }
 
-  if (code === 'AUTH_FAILED') {
+  // AUTH_FAILED: the CLI's own "no key configured"; UNAUTHENTICATED: the
+  // API rejected the key.
+  if (code === 'AUTH_FAILED' || code === 'UNAUTHENTICATED') {
     console.error(
       chalk.gray("  Run 'monid keys add' to configure an API key."),
     );
   }
 
+  printErrorHints(context.hints);
+
   process.exitCode = 1;
+}
+
+/** The API's next-step hints for an error, under the message (stderr). */
+function printErrorHints(hints: Record<string, unknown> | undefined): void {
+  const entries = Object.entries(hints ?? {}).filter(
+    ([, value]) => value !== undefined && value !== null,
+  );
+  if (entries.length === 0) return;
+  console.error();
+  console.error(chalk.bold('Hints'));
+  for (const [key, value] of entries) {
+    const rendered = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    console.error(`  ${chalk.gray(`${key}:`)} ${rendered}`);
+  }
 }
