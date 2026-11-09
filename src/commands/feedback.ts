@@ -55,7 +55,10 @@ export const feedbackCommand = new Command()
         const output = updateInfo ? applyUpdateNote(result, updateInfo) : result;
         console.log(JSON.stringify(output, null, 2));
       } else {
-        succeedSpinner(`Feedback sent (ID: ${result.feedbackId}). Thank you!`);
+        // The ID is the result, so it goes to stdout: the spinner is silent
+        // when stderr is not a terminal (how agents run the CLI).
+        succeedSpinner('Feedback sent. Thank you!');
+        console.log(`Feedback ID: ${result.feedbackId}`);
         if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
