@@ -108,7 +108,7 @@ export const runCommand = new Command()
         // Default: fire and return the run ID (only if not already complete)
         const updateInfo = await config.getUpdateInfo();
         if (json) {
-          const saved = output ? writeRunOutputJson(runRes, output) : runRes;
+          const saved = output ? await writeRunOutputJson(runRes, output) : runRes;
           const out = updateInfo ? applyUpdateNote(saved, updateInfo) : saved;
           console.log(JSON.stringify(out, null, 2));
         } else {
@@ -127,7 +127,7 @@ export const runCommand = new Command()
           if (updateInfo) printUpdateNotice(updateInfo);
         }
         if (output && !json) {
-          writeRunOutput(runRes, output);
+          await writeRunOutput(runRes, output);
           if (!resolveOutput(runRes)) {
             const runIdArg = `'${runRes.runId.replace(/'/g, "'\\''")}'`;
             const outputArg = `'${output.replace(/'/g, "'\\''")}'`;
@@ -171,7 +171,7 @@ export const runCommand = new Command()
       const refused = (result.providerResponse?.httpStatus ?? 0) >= 400;
 
       if (json) {
-        const saved = output ? writeRunOutputJson(result, output) : result;
+        const saved = output ? await writeRunOutputJson(result, output) : result;
         const out = updateInfo ? applyUpdateNote(saved, updateInfo) : saved;
         console.log(JSON.stringify(out, null, 2));
       } else {
@@ -194,7 +194,7 @@ export const runCommand = new Command()
       }
 
       // Write output to file if requested (JSON mode wrote it above)
-      if (output && !json) writeRunOutput(result, output);
+      if (output && !json) await writeRunOutput(result, output);
 
       if (!json && updateInfo) printUpdateNotice(updateInfo);
 

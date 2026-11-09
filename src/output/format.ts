@@ -1,4 +1,7 @@
-import { writeFileSync } from 'node:fs';
+import { createWriteStream, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import chalk from 'chalk';
 import { WEB_BASE_URL } from '../config/constants.js';
 import { renderTable } from './table.js';
@@ -301,12 +304,94 @@ export function resolveOutput(
   return data.providerResponse?.data ?? data.providerResponse?.error ?? data.output;
 }
 
-/** Write resolved output as JSON, or explain its absence. Suppress notices in JSON mode. */
-export function writeRunOutput(
+/** A value the service would accept as an ISO timestamp. */
+function isDate(v: unknown): v is string {
+  return typeof v === 'string' && Number.isFinite(Date.parse(v));
+}
+
+/** Monid's file store: sfs.monid.ai in prod, sfs.<env>.monid.ai elsewhere. */
+function isSfsLink(link: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(link);
+    return (
+      protocol === 'https:' &&
+      (hostname === 'sfs.monid.ai' || (hostname.startsWith('sfs.') && hostname.endsWith('.monid.ai')))
+    );
+  } catch {
+    return false;
+  }
+}
+
+const OVERFLOW_KEYS = ['download_link', 'content_type', 'link_expires_at', 'file_expires_at'];
+
+/**
+ * When a provider response is too large to return inline, the service stores
+ * it and replaces the WHOLE output with one key (`data`, or `file` for
+ * smolmachine downloads) holding a strict envelope:
+ * `{ download_link, content_type, link_expires_at, file_expires_at? }`.
+ * Returns the link for exactly that shape on our file store, else undefined.
+ *
+ * File results (an `image`/`audio`/`video` envelope next to provider fields,
+ * or a provider-hosted URL) are not overflow: they are the result itself and
+ * stay as JSON.
+ *
+ * Exported for tests.
+ */
+export function findOverflowLink(output: Record<string, unknown> | undefined): string | undefined {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return undefined;
+  const values = Object.values(output);
+  if (values.length !== 1) return undefined;
+  const value = values[0];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const env = value as Record<string, unknown>;
+  if (!Object.keys(env).every((k) => OVERFLOW_KEYS.includes(k))) return undefined;
+  if (typeof env.content_type !== 'string' || !isDate(env.link_expires_at)) return undefined;
+  if (env.file_expires_at !== undefined && !isDate(env.file_expires_at)) return undefined;
+  return typeof env.download_link === 'string' && isSfsLink(env.download_link) ? env.download_link : undefined;
+}
+
+/** The body could not be downloaded; the file holds its download link instead. */
+export class OutputDownloadError extends Error {}
+
+/** Generous: a body can be tens of MB. A hung download must not hang the CLI. */
+const DOWNLOAD_TIMEOUT_MS = 300_000;
+
+/** Write the output to `path`: the body itself, downloaded when it overflowed. */
+async function saveRunOutput(output: Record<string, unknown>, path: string): Promise<void> {
+  const link = findOverflowLink(output);
+  if (!link) {
+    writeFileSync(path, JSON.stringify(output, null, 2));
+    return;
+  }
+  const part = `${path}.part`;
+  try {
+    // Plain fetch, not the API client: the link is its own credential and
+    // the API key must not leave the API host.
+    const res = await fetch(link, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+    await pipeline(Readable.fromWeb(res.body as NodeReadableStream), createWriteStream(part));
+    renameSync(part, path);
+  } catch (err) {
+    rmSync(part, { force: true });
+    // Keep the link so nothing is lost; `monid runs get` mints a fresh one.
+    writeFileSync(path, JSON.stringify(output, null, 2));
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new OutputDownloadError(
+      `Couldn't download the response body (${reason}); ${path} holds its download link instead.`,
+    );
+  }
+}
+
+/**
+ * Write resolved output to `path`, or explain its absence. Suppress notices in
+ * JSON mode. A failed download prints a warning and exits 1 in human mode; in
+ * JSON mode it throws for `writeRunOutputJson` to report.
+ */
+export async function writeRunOutput(
   data: Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>,
   path: string,
   json?: boolean,
-): void {
+): Promise<void> {
   const output = resolveOutput(data);
   if (!output) {
     if (!json) {
@@ -314,22 +399,27 @@ export function writeRunOutput(
     }
     return;
   }
-  writeFileSync(path, JSON.stringify(output, null, 2));
-  if (!json) {
-    console.log(`Output written to ${path}`);
+  try {
+    await saveRunOutput(output, path);
+  } catch (err) {
+    if (json || !(err instanceof OutputDownloadError)) throw err;
+    console.log(chalk.yellow(err.message));
+    process.exitCode = 1;
+    return;
   }
+  if (!json) console.log(`Output written to ${path}`);
 }
 
 /**
  * JSON-mode write: on failure, report the error on the response instead of
  * throwing, so stdout stays one JSON document that still carries the run ID.
  */
-export function writeRunOutputJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>>(
+export async function writeRunOutputJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>>(
   data: T,
   path: string,
-): T | (T & { outputError: { path: string; message: string } }) {
+): Promise<T | (T & { outputError: { path: string; message: string } })> {
   try {
-    writeRunOutput(data, path, true);
+    await writeRunOutput(data, path, true);
     return data;
   } catch (err) {
     process.exitCode = 1;

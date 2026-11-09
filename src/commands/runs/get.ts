@@ -66,7 +66,7 @@ export const runsGetCommand = new Command()
       const updateInfo = await config.getUpdateInfo();
 
       if (json) {
-        const saved = output ? writeRunOutputJson(result, output) : result;
+        const saved = output ? await writeRunOutputJson(result, output) : result;
         const out = updateInfo ? applyUpdateNote(saved, updateInfo) : saved;
         console.log(JSON.stringify(out, null, 2));
       } else {
@@ -87,7 +87,7 @@ export const runsGetCommand = new Command()
       }
 
       // Write output to file if requested (JSON mode wrote it above)
-      if (output && !json) writeRunOutput(result, output);
+      if (output && !json) await writeRunOutput(result, output);
 
       if (!json && updateInfo) printUpdateNotice(updateInfo);
     } catch (err) {
