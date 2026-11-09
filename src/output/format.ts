@@ -27,6 +27,7 @@ import type {
   ResourceWithExternal,
   RunControl,
   RunError,
+  ProviderResponse,
   RunDetailResponse,
   RunsListResponse,
   WhoamiResponse,
@@ -297,11 +298,29 @@ function trimZero(n: number): string {
 
 // --- Run Detail ---
 
-/** Prefer provider data, then its error body, then stored run output. */
+/** Where a run's body lives on the response. */
+export type OutputField = 'data' | 'error' | 'output';
+
+/**
+ * The run's body and the field it came from: provider data, then its error
+ * body, then stored run output. The ONE place this priority lives; the file
+ * `-o` writes and what `--json` trims from stdout both follow it.
+ */
+export function resolveOutputSource(
+  data: Pick<RunDetailResponse, 'providerResponse' | 'output'>,
+): { field: OutputField; body: Record<string, unknown> } | undefined {
+  const pr = data.providerResponse;
+  if (pr?.data != null) return { field: 'data', body: pr.data };
+  if (pr?.error != null) return { field: 'error', body: pr.error };
+  if (data.output != null) return { field: 'output', body: data.output };
+  return undefined;
+}
+
+/** The run's body (see `resolveOutputSource`), or undefined when there is none. */
 export function resolveOutput(
   data: Pick<RunDetailResponse, 'providerResponse' | 'output'>,
 ): Record<string, unknown> | undefined {
-  return data.providerResponse?.data ?? data.providerResponse?.error ?? data.output;
+  return resolveOutputSource(data)?.body;
 }
 
 /** A value the service would accept as an ISO timestamp. */
@@ -414,15 +433,17 @@ export async function writeRunOutput(
  * JSON-mode write: on failure, report the error on the response instead of
  * throwing, so stdout stays one JSON document that still carries the run ID.
  *
- * On success the body that went to the file is left out of the returned
- * document (it can be many megabytes) and `outputFile` names where it was
- * saved; everything else on the run (ID, status, cost, HTTP status) stays.
- * When there was no output to save, the response is returned unchanged.
+ * On success `outputFile` names where the body was saved, and a successful
+ * body (it can be many megabytes) is left out of the returned document;
+ * everything else on the run (ID, status, cost, HTTP status) stays. A
+ * provider error body is kept: it is small, and it is what an agent reads to
+ * decide what to do next. When there was no output to save, the response is
+ * returned unchanged.
  */
 export async function writeRunOutputJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output' | 'status'>>(
   data: T,
   path: string,
-): Promise<T | (T & { outputFile: string }) | (T & { outputError: { path: string; message: string } })> {
+): Promise<T | SavedRunJson<T> | (T & { outputError: { path: string; message: string } })> {
   try {
     await writeRunOutput(data, path, true);
   } catch (err) {
@@ -430,22 +451,33 @@ export async function writeRunOutputJson<T extends Pick<RunDetailResponse, 'prov
     const message = err instanceof Error ? err.message : String(err);
     return { ...data, outputError: { path, message } };
   }
-  if (!resolveOutput(data)) return data;
+  const source = resolveOutputSource(data);
+  if (!source) return data;
 
-  // Drop only the field resolveOutput() picked, i.e. the one the file holds.
-  const slim: Record<string, unknown> = { ...data, outputFile: path };
-  const pr = data.providerResponse;
-  if (pr?.data !== undefined && pr.data !== null) {
-    const { data: _saved, ...rest } = pr;
-    slim.providerResponse = rest;
-  } else if (pr?.error !== undefined && pr.error !== null) {
-    const { error: _saved, ...rest } = pr;
-    slim.providerResponse = rest;
-  } else {
-    delete slim.output;
+  const { output, providerResponse, ...rest } = data;
+  switch (source.field) {
+    case 'output':
+      return { ...rest, providerResponse, outputFile: path };
+    case 'error':
+      return { ...rest, output, providerResponse, outputFile: path };
+    case 'data': {
+      const { data: _saved, ...pr } = providerResponse as ProviderResponse;
+      return { ...rest, output, providerResponse: pr, outputFile: path };
+    }
   }
-  return slim as T & { outputFile: string };
 }
+
+/**
+ * The `--json` document after `-o` saved the body: `outputFile` is set, and
+ * the saved success body (`output`, or the legacy `providerResponse.data`)
+ * may be absent. A provider error body stays.
+ */
+export type SavedRunJson<T extends Pick<RunDetailResponse, 'providerResponse' | 'output'>> =
+  Omit<T, 'output' | 'providerResponse'> & {
+    output?: T['output'];
+    providerResponse?: Omit<ProviderResponse, 'data'>;
+    outputFile: string;
+  };
 
 export function formatRunDetail(data: RunDetailResponse): void {
   console.log();

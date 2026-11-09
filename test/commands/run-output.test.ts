@@ -66,9 +66,9 @@ afterEach(() => {
 describe('runs get output options', () => {
   for (const flag of ['-o', '--output']) {
     for (const json of [false, true]) {
-      it(`accepts ${flag} and writes provider data${json ? ' with JSON stdout' : ''}`, async () => {
+      it(`accepts ${flag} and writes the run output${json ? ' with JSON stdout' : ''}`, async () => {
         const data = { items: [1, 2] };
-        const result = response({ providerResponse: { httpStatus: 200, data } });
+        const result = response({ output: data, providerResponse: { httpStatus: 200 } });
         getRun.mockResolvedValue(result);
 
         await cli.parse(['runs', 'get', '-r', 'run-a', flag, outputPath, ...(json ? ['--json'] : [])]);
@@ -78,9 +78,8 @@ describe('runs get output options', () => {
         expect(readFileSync(outputPath, 'utf-8')).toBe(JSON.stringify(data, null, 2));
         if (json) {
           // The saved body stays out of stdout; the file path replaces it.
-          expect(JSON.parse(stdout())).toEqual({
-            ...result, providerResponse: { httpStatus: 200 }, outputFile: outputPath,
-          });
+          const { output: _saved, ...rest } = result;
+          expect(JSON.parse(stdout())).toEqual({ ...rest, outputFile: outputPath });
         } else expect(stdout()).toContain(`Output written to ${outputPath}`);
       });
     }
@@ -129,7 +128,7 @@ describe('run output before returning', () => {
 
     it(`writes available provider output without polling${json ? ' in JSON mode' : ''}`, async () => {
       const data = { items: [4] };
-      const result = response({ status: 'RUNNING', providerResponse: { httpStatus: 200, data } });
+      const result = response({ status: 'RUNNING', output: data, providerResponse: { httpStatus: 200 } });
       run.mockResolvedValue(result);
 
       await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-o', outputPath, ...(json ? ['--json'] : [])]);
@@ -137,9 +136,8 @@ describe('run output before returning', () => {
       expect(getRun).not.toHaveBeenCalled();
       expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual(data);
       if (json) {
-        expect(JSON.parse(stdout())).toEqual({
-          ...result, providerResponse: { httpStatus: 200 }, outputFile: outputPath,
-        });
+        const { output: _saved, ...rest } = result;
+        expect(JSON.parse(stdout())).toEqual({ ...rest, outputFile: outputPath });
       } else {
         expect(stdout()).toContain(`Output written to ${outputPath}`);
         expect(stdout()).not.toContain('monid runs get');
@@ -169,7 +167,7 @@ describe('run output before returning', () => {
   });
 
   it('still writes synchronous results without polling', async () => {
-    run.mockResolvedValue(response({ providerResponse: { httpStatus: 200, data: { items: [6] } } }));
+    run.mockResolvedValue(response({ output: { items: [6] }, providerResponse: { httpStatus: 200 } }));
 
     await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-o', outputPath, '--json']);
 
@@ -179,37 +177,89 @@ describe('run output before returning', () => {
   });
 });
 
+// Shapes as the API sends them: the body is the top-level `output` (the wire
+// schema strips `providerResponse.data`); a provider error body is in
+// `providerResponse.error` with `output: null`.
 describe('JSON stdout when the file was written', () => {
   const big = 'x'.repeat(100_000);
+  const commands = [
+    { name: 'run', args: ['run', '-p', 'apify', '-e', '/tweets'] },
+    { name: 'runs get', args: ['runs', 'get', '-r', 'run-a'] },
+  ];
 
-  it('omits the saved provider body from stdout but keeps the run summary', async () => {
-    run.mockResolvedValue(response({ providerResponse: { httpStatus: 200, data: { html: big } } }));
+  for (const { name, args } of commands) {
+    it(`${name}: leaves a saved body out of stdout and names the file`, async () => {
+      const result = response({ output: { html: big }, providerResponse: { httpStatus: 200 } });
+      run.mockResolvedValue(result);
+      getRun.mockResolvedValue(result);
+
+      await cli.parse([...args, '-o', outputPath, '--json']);
+
+      expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual({ html: big });
+      expect(stdout()).not.toContain(big);
+      const { output: _saved, ...rest } = result;
+      expect(JSON.parse(stdout())).toEqual({ ...rest, outputFile: outputPath });
+      expect(process.exitCode ?? 0).toBe(0);
+    });
+
+    it(`${name}: keeps a provider error body on stdout and in the file`, async () => {
+      const error = { message: 'forbidden' };
+      const result = response({ output: null, providerResponse: { httpStatus: 403, error } });
+      run.mockResolvedValue(result);
+      getRun.mockResolvedValue(result);
+
+      await cli.parse([...args, '-o', outputPath, '--json']);
+
+      expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual(error);
+      expect(JSON.parse(stdout())).toEqual({ ...result, outputFile: outputPath });
+      // A refused sync run fails scripts; reading a run that was refused does not.
+      expect(process.exitCode ?? 0).toBe(name === 'run' ? 1 : 0);
+    });
+  }
+
+  it('leaves a downloaded overflow body out of stdout, link included', async () => {
+    const link = { download_link: 'https://sfs.monid.ai/tok', content_type: 'application/json',
+      link_expires_at: '2026-11-09T13:00:00.000Z' };
+    const result = response({ output: { data: link }, providerResponse: { httpStatus: 200 } });
+    run.mockResolvedValue(result);
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ html: big })));
 
     await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-o', outputPath, '--json']);
 
     expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual({ html: big });
-    expect(stdout()).not.toContain(big);
-    const parsed = JSON.parse(stdout());
-    expect(parsed).toMatchObject({ runId: 'run-a', status: 'COMPLETED', outputFile: outputPath });
-    expect(parsed.providerResponse).toEqual({ httpStatus: 200 });
+    const { output: _saved, ...rest } = result;
+    expect(JSON.parse(stdout())).toEqual({ ...rest, outputFile: outputPath });
   });
 
-  it('omits a saved stored output and a saved provider error body', async () => {
-    getRun.mockResolvedValue(response({ output: { html: big } }));
-    await cli.parse(['runs', 'get', '-r', 'run-a', '-o', outputPath, '--json']);
-    expect(stdout()).not.toContain(big);
-    expect(JSON.parse(stdout())).toMatchObject({ runId: 'run-a', outputFile: outputPath });
-    expect(JSON.parse(stdout()).output).toBeUndefined();
+  it('keeps the overflow link on stdout when its download fails', async () => {
+    const link = { download_link: 'https://sfs.monid.ai/tok', content_type: 'application/json',
+      link_expires_at: '2026-11-09T13:00:00.000Z' };
+    const result = response({ output: { data: link }, providerResponse: { httpStatus: 200 } });
+    run.mockResolvedValue(result);
+    spyOn(globalThis, 'fetch').mockResolvedValue(new Response('gone', { status: 500 }));
 
-    logs.mockClear();
-    getRun.mockResolvedValue(response({ providerResponse: { httpStatus: 500, error: { message: big } } }));
-    await cli.parse(['runs', 'get', '-r', 'run-a', '-o', outputPath, '--json']);
-    expect(stdout()).not.toContain(big);
-    expect(JSON.parse(stdout()).providerResponse).toEqual({ httpStatus: 500 });
+    await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-o', outputPath, '--json']);
+
+    expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual({ data: link });
+    const { outputError, ...parsed } = JSON.parse(stdout());
+    expect(parsed).toEqual(result);
+    expect(outputError).toEqual({ path: outputPath, message: expect.stringContaining('HTTP 500') });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints a terminal run with no body unchanged and writes nothing', async () => {
+    const result = response({ status: 'TIMED_OUT', output: null, providerResponse: {} as never });
+    run.mockResolvedValue(result);
+
+    await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-o', outputPath, '--json']);
+
+    expect(existsSync(outputPath)).toBe(false);
+    expect(JSON.parse(stdout())).toEqual(result);
+    expect(process.exitCode).toBe(1);
   });
 
   it('still prints the full run without -o', async () => {
-    const result = response({ providerResponse: { httpStatus: 200, data: { html: 'small' } } });
+    const result = response({ output: { html: 'small' }, providerResponse: { httpStatus: 200 } });
     run.mockResolvedValue(result);
     await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '--json']);
     expect(JSON.parse(stdout())).toEqual(result);
@@ -227,17 +277,18 @@ describe('JSON stdout when the file cannot be written', () => {
 
   for (const { name, args, status } of cases) {
     it(`keeps ${name} to one document with the run ID and the write error`, async () => {
-      const result = response({ status, providerResponse: { httpStatus: 200, data } });
+      const result = response({ status, output: data, providerResponse: { httpStatus: 200 } });
       run.mockResolvedValue(result);
       getRun.mockResolvedValue(result);
       const missingPath = join(dir, 'missing', 'out.json');
 
       await cli.parse([...args, '-o', missingPath, '--json']);
 
-      const parsed = JSON.parse(stdout());
-      expect(parsed.runId).toBe('run-a');
-      expect(parsed.outputError.path).toBe(missingPath);
-      expect(parsed.outputError.message).toContain('ENOENT');
+      // Nothing reached the file, so stdout keeps the body: it is the only copy.
+      const { outputError, ...parsed } = JSON.parse(stdout());
+      expect(parsed).toEqual(result);
+      expect(outputError.path).toBe(missingPath);
+      expect(outputError.message).toContain('ENOENT');
       expect(process.exitCode).toBe(1);
       expect(existsSync(missingPath)).toBe(false);
     });
