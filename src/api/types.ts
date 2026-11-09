@@ -125,7 +125,9 @@ export interface RunError {
 
 export interface ProviderResponse {
   httpStatus: number;
+  /** Not sent by the API today (its wire schema strips it; the body is the top-level `output`). Tolerated. */
   data?: Record<string, unknown>;
+  /** The provider's error body on a 4xx/5xx; the run's `output` is then `null`. */
   error?: Record<string, unknown>;
 }
 
@@ -336,6 +338,12 @@ export interface RunResponse {
   price: Price;
   cost?: Cost | null;
   createdAt: string;
+  /**
+   * The provider's body on a synchronous COMPLETED / TIMED_OUT run; `null`
+   * when there is none (e.g. a provider error, whose body is in
+   * `providerResponse.error`). Absent on BLOCKED and still-running runs.
+   */
+  output?: Record<string, unknown> | null;
   providerResponse?: ProviderResponse;
   /** Control snapshots that blocked the run (present when status is BLOCKED). */
   controls?: RunControl[];
@@ -352,7 +360,8 @@ export interface RunDetailResponse {
   endpoint: string;
   status: RunStatus;
   input?: EndpointInput;
-  output?: Record<string, unknown>;
+  /** The provider's body; `null` when there is none (see `RunResponse.output`). */
+  output?: Record<string, unknown> | null;
   error?: RunError | string;
   /** Whether the run can currently be stopped via `monid runs stop`. Present on run detail. */
   stoppable?: boolean;
