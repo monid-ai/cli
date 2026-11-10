@@ -401,3 +401,48 @@ describe('MonidAPI rate limiting (429)', () => {
     expect(retryAfterSeconds('2.2', now)).toBe(3);
   });
 });
+
+describe('MonidAPI discover tag filter and tags()', () => {
+  function capture(response: unknown) {
+    const sent: { url?: string; method?: string; body?: unknown; auth?: string | null } = {};
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      sent.url = url;
+      sent.method = init?.method;
+      sent.body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      sent.auth = new Headers(init?.headers).get('authorization');
+      return new Response(JSON.stringify(response), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    return sent;
+  }
+  const empty = { results: [], query: 'x', count: 0 };
+
+  it('sends tags / excludeTags only when given', async () => {
+    let sent = capture(empty);
+    await api.discover('web search', undefined, undefined, undefined, {
+      tags: ['free', 'promotion'],
+      excludeTags: ['no-markup'],
+    });
+    expect(sent.body).toEqual({
+      query: 'web search',
+      tags: ['free', 'promotion'],
+      excludeTags: ['no-markup'],
+    });
+
+    sent = capture(empty);
+    await api.discover('web search', undefined, undefined, undefined, { tags: [], excludeTags: undefined });
+    expect(sent.body).toEqual({ query: 'web search' });
+  });
+
+  it('tags() GETs /public/v1/tags without a key when none is set', async () => {
+    const body = { tags: [{ tag: 'free', description: '$0.' }] };
+    const sent = capture(body);
+    const out = await new MonidAPI({ apiKey: '', baseUrl: 'https://api.example.test' }).tags();
+    expect(sent.method).toBe('GET');
+    expect(sent.url).toBe('https://api.example.test/public/v1/tags');
+    expect(sent.auth).toBeNull();
+    expect(out).toEqual(body);
+  });
+});

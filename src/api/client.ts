@@ -3,6 +3,7 @@ import { MonidError } from '../utils/error.js';
 import type {
   BalanceResponse,
   DiscoverResponse,
+  TagsResponse,
   DisputeRequest,
   DisputeResponse,
   ExternalResourceDetail,
@@ -129,7 +130,8 @@ export class MonidAPI {
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.apiKey}`,
+      // No key → an anonymous call (the `/public/v1/*` routes).
+      ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
       'Content-Type': 'application/json',
       'X-Monid-Client': `cli@${VERSION}`,
     };
@@ -199,6 +201,7 @@ export class MonidAPI {
     limit?: number,
     minScore?: number,
     includeUnavailable?: boolean,
+    filter?: { tags?: string[]; excludeTags?: string[] },
   ): Promise<DiscoverResponse> {
     const body: Record<string, unknown> = { query };
     if (limit !== undefined) body.limit = limit;
@@ -206,6 +209,11 @@ export class MonidAPI {
     // Sent only when opting IN, so the request body is byte-identical to
     // before for every existing caller (the server defaults it to false).
     if (includeUnavailable) body.includeUnavailable = true;
+    // Tag filter (`monid tags` lists the values): keep endpoints with ANY of
+    // `tags`, drop those with ANY of `excludeTags`. Unknown tag → 400 that
+    // names the allowed ones. Sent only when given.
+    if (filter?.tags?.length) body.tags = filter.tags;
+    if (filter?.excludeTags?.length) body.excludeTags = filter.excludeTags;
     return this.request('POST', '/v1/discover', body, { idempotent: true, label: 'discover' });
   }
 
@@ -240,6 +248,11 @@ export class MonidAPI {
 
   async stopRun(runId: string): Promise<RunStopResponse> {
     return this.request('POST', `/v1/runs/${encodeURIComponent(runId)}/stop`);
+  }
+
+  /** `GET /public/v1/tags`: the public endpoint tags and what they mean. */
+  async tags(): Promise<TagsResponse> {
+    return this.request('GET', '/public/v1/tags', undefined, { label: 'tags' });
   }
 
   async getBalance(): Promise<BalanceResponse> {

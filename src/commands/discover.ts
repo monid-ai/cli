@@ -6,6 +6,12 @@ import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
 import { formatDiscoverResults } from '../output/format.js';
 import { startSpinner, succeedSpinner, stopSpinner } from '../output/spinner.js';
 
+/** `free, promotion,` → `['free', 'promotion']`; nothing left → undefined. */
+export function cleanTags(tags: string[] | undefined): string[] | undefined {
+  const out = (tags ?? []).map((t) => t.trim()).filter(Boolean);
+  return out.length > 0 ? out : undefined;
+}
+
 export const discoverCommand = new Command()
   .name('discover')
   .description('Search for data endpoints using natural language.')
@@ -16,8 +22,16 @@ export const discoverCommand = new Command()
     '-u, --include-unavailable',
     'Include endpoints currently in outage (hidden by default, ranked last).',
   )
+  .option(
+    '-t, --tags <tags:string[]>',
+    'Only endpoints with ANY of these tags, comma-separated (e.g. free,promotion). See `monid tags`.',
+  )
+  .option(
+    '-x, --exclude-tags <tags:string[]>',
+    'Drop endpoints with ANY of these tags, comma-separated (e.g. promotion). See `monid tags`.',
+  )
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ query, limit, minScore, includeUnavailable, json }) => {
+  .action(async ({ query, limit, minScore, includeUnavailable, tags, excludeTags, json }) => {
     try {
       const config = new ConfigManager();
       const active = config.getActiveKey();
@@ -34,7 +48,10 @@ export const discoverCommand = new Command()
         startSpinner(`Searching for "${query}"...`);
       }
 
-      const data = await api.discover(query, limit, minScore, includeUnavailable);
+      const data = await api.discover(query, limit, minScore, includeUnavailable, {
+        tags: cleanTags(tags),
+        excludeTags: cleanTags(excludeTags),
+      });
       const updateInfo = await config.getUpdateInfo();
 
       if (json) {
