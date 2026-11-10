@@ -2,6 +2,8 @@ import { Table, Column, type Direction } from '@cliffy/table';
 
 export interface ColumnConfig {
   align?: Direction;
+  /** Wrap the column's cells at this width (words kept whole). */
+  maxWidth?: number;
 }
 
 /**
@@ -22,6 +24,7 @@ export function renderTable(
     for (const [index, config] of Object.entries(options.columns)) {
       const col = new Column();
       if (config.align) col.align(config.align);
+      if (config.maxWidth) col.maxWidth(config.maxWidth);
       table.column(Number(index), col);
     }
   }
