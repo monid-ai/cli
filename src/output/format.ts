@@ -465,14 +465,17 @@ export function formatBalance(data: BalanceResponse): void {
   if (data.held && data.held.value > 0) {
     console.log(`  Held:    $${data.held.value.toFixed(2)} ${chalk.gray('(reserved by runs and resources in progress)')}`);
   }
-  // At $0, say how to fund the wallet. `topup.stripe` is only sent to a key
-  // that may create a checkout session; `dashboard` may be absent, so fall
-  // back to the web app for this environment.
+  // At $0, say how to fund the wallet — ONE action, like the API's top-up
+  // hint: `topup.stripe` is only sent to a key that may create a checkout
+  // session, so it gets the command; any other key gets the dashboard
+  // (`dashboard` may be absent: fall back to the web app for this env).
   if (value <= 0 && (data.topup?.dashboard || data.topup?.stripe)) {
     const dashboard = data.topup.dashboard ?? `${WEB_BASE_URL}/wallet`;
     console.log(
       chalk.gray(
-        `  Top up at ${dashboard}${data.topup.stripe ? ' or run: monid topup -a <AMOUNT>' : ''}`,
+        data.topup.stripe
+          ? '  To top up, run: monid topup -a <AMOUNT>'
+          : `  To top up, go to ${dashboard}`,
       ),
     );
   }
@@ -756,13 +759,14 @@ export function formatHints(hints: Record<string, unknown> | undefined): void {
 /**
  * Format a control amount. The API sends control amounts as plain USD
  * numbers; anything else (missing, or an unexpected shape) renders as '-'
- * rather than crashing the whole run render. Four decimals, like run
- * prices: many runs cost under a cent.
+ * rather than crashing the whole run render. Millionths of a dollar (the
+ * wallet's own precision) with trailing zeros dropped, but always cents:
+ * 0.219685 → $0.219685, 0.5 → $0.50, 0.016 → $0.016.
  */
-function formatUsd(n: unknown): string {
-  return typeof n === 'number' && Number.isFinite(n)
-    ? `$${Math.max(0, n).toFixed(4)}`
-    : '-';
+export function formatUsd(n: unknown): string {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '-';
+  const [whole, frac = ''] = Math.max(0, n).toFixed(6).split('.');
+  return `$${whole}.${frac.replace(/0+$/, '').padEnd(2, '0')}`;
 }
 
 function formatRunControl(control: RunControl): void {

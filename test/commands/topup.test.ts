@@ -163,18 +163,30 @@ describe('balance rendering', () => {
     expect(out).toContain('Balance: $0.00 USD');
     expect(out).not.toContain('-0.12');
     expect(out).toContain('Held:    $1.12');
-    expect(out).toContain('monid topup -a <AMOUNT>');
+    // One action: a key that may create a checkout link gets the command only.
+    expect(out).toContain('To top up, run: monid topup -a <AMOUNT>');
+    expect(out).not.toContain('app.monid.ai/wallet');
   });
 
-  it('formatBalance still offers monid topup when only topup.stripe is present', () => {
+  it('formatBalance offers monid topup when only topup.stripe is present', () => {
     const out = capture(() =>
       formatBalance({
         balance: { value: 0, currency: 'USD' },
         topup: { stripe: '/v1/wallet/topup/sessions' },
       }),
     );
-    expect(out).toContain(`Top up at ${WEB_BASE_URL}/wallet`);
-    expect(out).toContain('monid topup -a <AMOUNT>');
+    expect(out).toContain('To top up, run: monid topup -a <AMOUNT>');
+  });
+
+  it('formatBalance names only the dashboard for a key that cannot top up', () => {
+    const out = capture(() =>
+      formatBalance({
+        balance: { value: 0, currency: 'USD' },
+        topup: { dashboard: 'https://app.monid.ai/wallet' },
+      }),
+    );
+    expect(out).toContain('To top up, go to https://app.monid.ai/wallet');
+    expect(out).not.toContain('monid topup');
   });
 
   it('formatBalance is quiet about top-up when the balance is positive', () => {
