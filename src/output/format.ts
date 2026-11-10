@@ -30,6 +30,7 @@ import type {
   RunError,
   RunDetailResponse,
   RunsListResponse,
+  TagsResponse,
   WhoamiResponse,
   PromoCodesListResponse,
   RedeemPromoCodeResponse,
@@ -131,6 +132,23 @@ function isOffer(a: Alternative): boolean {
 function alternativeText(a: Alternative): string {
   if (!isOffer(a)) return a.limits ? `${a.label} · ${a.limits}` : a.label;
   return a.limits ? `[${a.label}] ${a.limits}` : `[${a.label}]`;
+}
+
+// --- Tags ---
+
+export function formatTags(data: TagsResponse): void {
+  if (!data.tags?.length) {
+    console.log(chalk.gray('No tags.'));
+    return;
+  }
+  renderTable(
+    ['Tag', 'Meaning'],
+    data.tags.map((t) => [t.tag, t.description]),
+  );
+  console.log();
+  console.log(
+    chalk.gray('Filter discover with --tags <tag,...> / --exclude-tags <tag,...>.'),
+  );
 }
 
 // --- Inspect ---
