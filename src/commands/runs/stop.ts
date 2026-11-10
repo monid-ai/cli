@@ -8,6 +8,7 @@ import {
   succeedSpinner,
   stopSpinner,
 } from '../../output/spinner.js';
+import { statusBadge } from '../../output/colors.js';
 import { resolveRunId } from './run-id.js';
 
 export const runsStopCommand = new Command()
@@ -42,7 +43,11 @@ export const runsStopCommand = new Command()
         const output = updateInfo ? applyUpdateNote(result, updateInfo) : result;
         console.log(JSON.stringify(output, null, 2));
       } else {
-        succeedSpinner(`Run ${result.runId} is being stopped.`);
+        // The confirmation is the result, so it goes to stdout: the spinner is
+        // silent when stderr is not a terminal (how agents run the CLI).
+        succeedSpinner('Stop requested');
+        console.log(`Run ID: ${result.runId}`);
+        console.log(`Status: ${statusBadge(result.status)}`);
         if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {

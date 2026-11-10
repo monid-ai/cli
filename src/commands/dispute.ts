@@ -146,7 +146,10 @@ export const disputeCommand = new Command()
         console.log(JSON.stringify(output, null, 2));
       } else {
         const runs = body.runIds.length === 1 ? '1 run' : `${body.runIds.length} runs`;
-        succeedSpinner(`Dispute filed for ${runs} (ID: ${result.disputeId}).`);
+        // The ID is the result, so it goes to stdout: the spinner is silent
+        // when stderr is not a terminal (how agents run the CLI).
+        succeedSpinner(`Dispute filed for ${runs}.`);
+        console.log(`Dispute ID: ${result.disputeId}`);
         if (updateInfo) printUpdateNotice(updateInfo);
       }
     } catch (err) {
