@@ -170,14 +170,16 @@ export class MonidAPI {
       }
       const message =
         data?.error?.message ?? data?.message ?? `HTTP ${res.status}`;
-      // The API's envelope is { code: <http>, message, errorCode? }: the
-      // documented machine code is top-level `errorCode`. Prefer it, then a
-      // nested error.code, then one derived from the HTTP status.
+      // The API's envelope is { code: <http>, message, errorCode, hints? }:
+      // the machine code is top-level `errorCode` (always present on current
+      // APIs). Prefer it, then a nested error.code, then the same code the
+      // API would have sent for that status.
       const code = data?.errorCode ?? data?.error?.code ?? statusToCode(res.status);
       throw new MonidError(code, message, res.status, {
         retryAfterSec: retryAfterSeconds(res.headers.get('retry-after')),
         limitedOn: opts?.label ?? defaultLabel(method, path),
         topup: data?.topup,
+        hints: isHintMap(data?.hints) ? data.hints : undefined,
       });
     }
 
@@ -448,19 +450,32 @@ function isRunBody(data: unknown): boolean {
   return typeof data === 'object' && data !== null && 'runId' in data && 'status' in data;
 }
 
+/**
+ * The API's status-default `errorCode`s. Used when an error body has none —
+ * an older API, or a non-JSON page from a gateway in front of it — so one
+ * kind of failure reports one code whichever answered.
+ */
+const STATUS_DEFAULT_CODE: Record<number, string> = {
+  400: 'BAD_REQUEST',
+  401: 'UNAUTHENTICATED',
+  402: 'WALLET_NOT_ACTIVE',
+  403: 'FORBIDDEN',
+  404: 'NOT_FOUND',
+  409: 'CONFLICT',
+  410: 'GONE',
+  413: 'PAYLOAD_TOO_LARGE',
+  429: 'RATE_LIMITED',
+  500: 'INTERNAL_ERROR',
+  501: 'NOT_IMPLEMENTED',
+  502: 'BAD_GATEWAY',
+  503: 'SERVICE_UNAVAILABLE',
+};
+
 function statusToCode(status: number): string {
-  switch (status) {
-    case 401:
-      return 'AUTH_FAILED';
-    case 402:
-      return 'INSUFFICIENT_BALANCE';
-    case 403:
-      return 'FORBIDDEN';
-    case 404:
-      return 'NOT_FOUND';
-    case 429:
-      return 'RATE_LIMITED';
-    default:
-      return `HTTP_${status}`;
-  }
+  return STATUS_DEFAULT_CODE[status] ?? `HTTP_${status}`;
+}
+
+/** An error body's `hints`: a map of phrase → rendered next step. */
+function isHintMap(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
 }
