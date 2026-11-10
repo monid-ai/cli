@@ -1,6 +1,6 @@
 ---
 name: monid
-version: 0.1.9
+version: 0.1.10
 description: >-
   Discover better ways to complete tasks. Proactively run `monid discover`
   before writing a scraper, before using a generic web fetch for structured
@@ -80,7 +80,7 @@ For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in outpu
 
 **Check the catalog before building from scratch.** Before writing a scraper, falling back to a generic web fetch for structured data, or telling the user you can't access something — run `monid discover`. The catalog has hundreds of tools and grows continuously. You don't know what's available until you search.
 
-1. **Discover** — Run `monid discover -q "<what you need>"` to search available tools. Use `-s <score>` to filter by minimum relevance. Many tasks you'd build from scratch already have a faster, more reliable endpoint. The `Health` column reports a measured status and typical run time — see [Endpoint Health](#endpoint-health).
+1. **Discover** — Run `monid discover -q "<what you need>"` to search available tools. Use `-s <score>` to filter by minimum relevance. Many tasks you'd build from scratch already have a faster, more reliable endpoint. The `Health` column reports a measured status and typical run time — see [Endpoint Health](#endpoint-health). Rows indented under a result (`└ /free/search`) are its **alternatives** — the same endpoint at another price or with other limits; weigh them with the result — see [Alternatives](#alternatives-free-tiers-promotions-regular-price).
 2. **Inspect** — Use `monid inspect` to read the input schema. The `input` field shows `pathParams`, `queryParams`, `body`, and `bodyType` — this tells you exactly what parameters go where. Never guess. The `Health` section adds the tail run time.
 3. **Run** — Map the inspect output to `monid run` flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`. All three are optional. Use `--wait` to block until completion.
 4. **Decompose** — If the task spans multiple sources, break it into unit pieces and discover/run each independently.
@@ -116,6 +116,48 @@ Why this matters: **Monid runs spend the user's Monid balance.** Never spend it 
 
 A missing run time means low traffic, not a slow endpoint. Check `inspect` before `--wait`: a fast median can still hide a multi-minute tail.
 
+### Alternatives (free tiers, promotions, regular price)
+
+Some endpoints come in several versions from the same provider: a regular endpoint plus **offers** — a free tier or a promotion. `discover` shows one row per group (the best-ranked version) and lists the others indented underneath:
+
+```
+Provider  Endpoint               Price        Description                                     Health
+tinyfish  /search                $0.005/call  Search the live web, news, or research pap...   healthy 3.2s
+            └ /free/search       $0/call      [Free tier] 30/min, 500/hour per workspace.
+mrscraper /promo/amazon/product  $0.025/call  [50% off] Scrape an Amazon product page in...   stable
+                                              5/min, 50/hour, 150/day per workspace.
+            └ /amazon/product    $0.05/call   Regular price
+```
+
+| Label / tag | What it is |
+|-------------|-----------|
+| `[Free tier]` (tag `free`) | $0, permanent, with tighter per-workspace rate limits. |
+| `[50% off]` or another label (tag `promotion`) | A lower price for a limited time, with its own rate limits. The limits text says when it ends ("Through 2026-11-30"). |
+| `Regular price` | The normal endpoint: normal price, no offer limits. |
+
+**An alternative is the same endpoint**: same provider, same input, same output. It ranks exactly as high as the row above it — it is not a weaker match. Choose between them on price and limits only:
+
+1. **Estimate the volume** of calls the task needs.
+2. **Read the limits and limitations** — rate limits ("30/min, 500/hour per workspace") and any stated restriction ("Turbo voice only", "up to 1,000 characters per run", "may answer 429").
+3. **Prefer the cheapest version whose limits and limitations fit the task.** A free tier or promotion is the right choice for a handful of calls; take the regular endpoint for bulk work, for anything a limitation rules out, or once the offer's limit is reached.
+4. **Switching to a paid version spends money** — from $0 to a regular price needs the same spending permission as any run.
+
+When a run on an offer is **rate limited**, the error's Hints name the other versions (e.g. `use the regular endpoint (higher rate limit)`). Switch to one when the cost is acceptable instead of waiting out the limit.
+
+`inspect` shows the same facts: an **Offer** section on a free tier or promotion (label, limits, regular endpoint, regular price) and an **Alternatives** section listing the other versions. With `-j`, discover results carry `alternatives` (each `{ endpoint, label, tags, price, limits }`), and a result that is itself an offer carries `label` and `limits`; inspect carries `offer` and `alternatives`.
+
+### Tags
+
+Endpoints carry public **tags**; `monid tags` prints the live list and what each one means. Today:
+
+| Tag | Meaning |
+|-----|---------|
+| `free` | $0. A free tier: permanent, with tighter per-workspace rate limits. |
+| `promotion` | A lower price for a limited time, with its own per-workspace rate limits. |
+| `no-markup` | Priced at the provider's standard rate, with no platform fee added. |
+
+Filter discover with them: `--tags free,promotion` keeps endpoints carrying **any** of the tags (`--tags free` shows the free tiers themselves), `--exclude-tags promotion` drops endpoints carrying any of them. Filter only when the user asked for it (e.g. "free only", "no time-limited deals") — an unfiltered search already shows every version.
+
 ### Check the Hints
 
 Commands can return a **Hints** block. When present, it carries suggested actions from the server: which command to run next, how this endpoint relates to others, or caveats worth knowing. Read it before deciding your next move, and prefer its suggestions over guessing. With `-j`, the same data is on the response's `hints` field.
@@ -128,7 +170,8 @@ Each command supports `--help` for full usage. Here's what's available:
 
 | Command | What it does |
 |---------|-------------|
-| `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`, `-u` to include endpoints in outage) |
+| `monid discover` | Search for data endpoints using natural language (`-q <query>`, `-l <limit>`, `-s <minScore>`, `-u` to include endpoints in outage, `-t/--tags <tag,...>` keep any of these tags, `-x/--exclude-tags <tag,...>` drop any of these tags). Alternatives are listed under each result |
+| `monid tags` | List the endpoint tags and what they mean (no API key required, `-j`) |
 | `monid inspect` | Get full details and input schema for a specific endpoint (`-p <provider> -e <endpoint>`) |
 | `monid run` | Execute a data endpoint (`-p`, `-e`, `-i` for body JSON, `-f` for body input file, `--query` for query params, `--path` for path params, `-w` to wait, `-o` to save output) |
 | `monid runs list` | List recent runs (`-l <limit>`, `--cursor` for pagination) |
@@ -534,7 +577,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **Run status FAILED** — Check error details with `monid runs get -r <runId>`. Common causes: invalid input parameters (re-inspect the endpoint), the provider's own rate limits (retry later), or request scope too large (reduce item count).
 
-**Rate limited** (`monid: error: Rate limited on <what>. Retry after Ns.`; with `--json`, `error.code` is `RATE_LIMITED`) — the workspace hit a Monid request limit, not a provider error. Wait N seconds, then retry the same command, and space out bursts of calls. Whether anything was created depends on where the 429 came from: on `monid discover`/`inspect`, or on `monid run` itself, nothing was run or charged; if it arrived **while waiting** (`-w`, or `monid runs get`), the run already exists — check `monid runs list` before running again so you don't pay twice.
+**Rate limited** (`monid: error: Rate limited on <what>. Retry after Ns.`; with `--json`, `error.code` is `RATE_LIMITED`) — the workspace hit a Monid request limit, not a provider error. Wait N seconds, then retry the same command, and space out bursts of calls. Whether anything was created depends on where the 429 came from: on `monid discover`/`inspect`, or on `monid run` itself, nothing was run or charged; if it arrived **while waiting** (`-w`, or `monid runs get`), the run already exists — check `monid runs list` before running again so you don't pay twice. A rate-limited `monid run` may print **Hints** under the error (with `--json`, `error.hints`): the endpoint's other versions and similar endpoints — see [Alternatives](#alternatives-free-tiers-promotions-regular-price).
 
 **Run status BLOCKED** — A workspace control stopped the run before it executed: not enough wallet balance, a budget, or a run cap. Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until it is resolved — for the wallet, `monid topup -a <amount>` (at least the top-up minimum, currently $5) prints an `Open to pay` link for the user, or, if the key can't create one, a dashboard wallet link to send them to instead; rerun only once the user has paid. For a budget or run cap, the user can raise it on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
 
