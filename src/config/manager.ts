@@ -10,6 +10,7 @@ export class ConfigManager {
   private config: Conf<ConfigSchema>;
   private credentials: Conf<CredentialsSchema>;
   private _updateCheckPromise: Promise<void> | null = null;
+  private _latestVersion: string | undefined;
 
   constructor() {
     const configDir = resolveConfigDir();
@@ -22,10 +23,6 @@ export class ConfigManager {
       cwd: configDir,
       serialize: yaml.stringify,
       deserialize: yaml.parse,
-      defaults: {
-        version: VERSION,
-        active_key: '',
-      },
     });
 
     this.credentials = new Conf<CredentialsSchema>({
@@ -37,13 +34,19 @@ export class ConfigManager {
       configFileMode: 0o600,
       serialize: yaml.stringify,
       deserialize: yaml.parse,
-      defaults: {
-        keys: {},
-      },
     });
 
-    // Keep config version in sync with installed CLI version
-    this.config.set('version', VERSION);
+    // Defaults are applied on read, not passed to Conf: Conf writes the file
+    // whenever it differs from the defaults, so every command would touch
+    // the config dir, even `keys list`. Under a sandbox that only lets the
+    // workspace be written that fails with EPERM before the command runs.
+
+    // Keep config version in sync with installed CLI version, but only
+    // write when it differs. This is bookkeeping, so a failed write
+    // (read-only config dir) must not fail the command.
+    if (this.config.get('version') !== VERSION) {
+      this.bestEffort(() => this.config.set('version', VERSION));
+    }
 
     // Start background update check if cache is stale
     const lastCheck = this.config.get('last_update_check');
@@ -54,12 +57,23 @@ export class ConfigManager {
     if (isStale) {
       this._updateCheckPromise = fetchLatestVersion()
         .then((version) => {
-          if (version) {
-            this.config.set('latest_version', version);
-          }
-          this.config.set('last_update_check', new Date().toISOString());
+          if (version) this._latestVersion = version;
+          const update: Partial<ConfigSchema> = {
+            last_update_check: new Date().toISOString(),
+          };
+          if (version) update.latest_version = version;
+          this.bestEffort(() => this.config.set(update as ConfigSchema));
         })
         .catch(() => {});
+    }
+  }
+
+  /** Run a write that only caches state; ignore a config dir we cannot write. */
+  private bestEffort(write: () => void): void {
+    try {
+      write();
+    } catch {
+      // EPERM / EACCES / EROFS: the state is re-derived on the next run.
     }
   }
 
@@ -74,7 +88,7 @@ export class ConfigManager {
   }
 
   getActiveKeyLabel(): string {
-    return this.config.get('active_key');
+    return this.config.get('active_key') ?? '';
   }
 
   activateKey(label: string): void {
@@ -82,7 +96,7 @@ export class ConfigManager {
   }
 
   getAllKeys(): Record<string, CredentialKey> {
-    return this.credentials.get('keys');
+    return this.credentials.get('keys') ?? {};
   }
 
   getKey(label: string): CredentialKey | undefined {
@@ -130,7 +144,8 @@ export class ConfigManager {
       this._updateCheckPromise = null;
     }
 
-    const latestVersion = this.config.get('latest_version');
+    const latestVersion =
+      this._latestVersion ?? this.config.get('latest_version');
     if (!latestVersion) return null;
 
     if (isNewerVersion(VERSION, latestVersion)) {
