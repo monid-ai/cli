@@ -324,6 +324,8 @@ monid run -p apify -e /damilo/google-maps-scraper \
   -f params.json -w -o results.json
 ```
 
+On Windows PowerShell 5.1, prefer `-f` over `-i`: inline JSON loses its double quotes there (see Troubleshooting).
+
 ---
 
 ## Cost & Budget Warning
@@ -543,6 +545,23 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 **"Polling timed out after Ns"** — `--wait` ran out of time; the run is still going. The error shows the run ID; continue with `monid runs get -r <runId>`.
 
 **"Endpoint not found" on Windows Git Bash** — Git Bash rewrites paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown`. Prefix the command so the variable reaches the `monid` process: `MSYS_NO_PATHCONV=1 monid run -p … -e /web/scrape/markdown …` (or `export MSYS_NO_PATHCONV=1` once per shell).
+
+**`Invalid JSON input` / `Invalid JSON for --query` on Windows PowerShell** — Windows PowerShell 5.1 strips the double quotes inside an argument when it starts a native program, so `-i '{"q": "ai"}'` reaches `monid` as `{q: ai}`. Two fixes:
+
+- **Body (`-i`)**: put the JSON in a file and pass `-f`. Write the file without a byte-order mark (the CLI cannot parse one; `Set-Content -Encoding utf8` and `>` add it in 5.1):
+
+  ```powershell
+  [System.IO.File]::WriteAllText("$PWD\params.json", '{"q": "ai", "limit": 5}')
+  monid run -p some-provider -e /some/endpoint -f params.json -w -o out.json
+  ```
+
+- **`--query` and `--path`** have no file option. Escape every inner double quote as `\"`:
+
+  ```powershell
+  monid run -p some-provider -e /users/{userId}/posts --path '{\"userId\": \"12345\"}' --query '{\"limit\": 10}' -w -o out.json
+  ```
+
+  The same escaping works for `-i`. Don't add it in bash, zsh or Git Bash, where the plain `'{"key": "value"}'` form is right.
 
 **"Feedback is not available for this workspace yet."** — `monid feedback` isn't enabled for this workspace. Don't retry; continue without it.
 
