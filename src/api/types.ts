@@ -270,6 +270,42 @@ export interface RunControl {
   snapshot: ControlSnapshot;
 }
 
+// --- Offers / alternatives ---
+
+/**
+ * Another member of an endpoint's GROUP: the regular endpoint and its
+ * offers (free tiers, promotions) share a provider, input and output, and
+ * differ only in price and limits. Only what differs is sent.
+ */
+export interface Alternative {
+  /** Same provider, e.g. `/free/search`. */
+  endpoint: string;
+  /** Short text: "Free tier", "50% off", "Regular price". */
+  label: string;
+  /** Public tags: `free`, `promotion`, `no-markup`. */
+  tags: string[];
+  price: Price;
+  /** Per-workspace rate limits and any other limitations. */
+  limits?: string;
+}
+
+/** Present only on an OFFER (a free tier or a promotion). */
+export interface OfferBlock {
+  /** "Free tier", "50% off", … */
+  label: string;
+  /** The regular endpoint this is an offer of. Absent when it is not sold. */
+  regularEndpoint?: string;
+  /** Per-workspace rate limits and any other limitations. */
+  limits?: string;
+  /** The regular price — promotions only. */
+  listPrice?: Price;
+}
+
+/** `GET /public/v1/tags`: the public tags and what each one means. */
+export interface TagsResponse {
+  tags: Array<{ tag: string; description: string }>;
+}
+
 // --- Discover ---
 
 export interface DiscoverResult {
@@ -280,8 +316,16 @@ export interface DiscoverResult {
   price: Price;
   score: number;
   tags: string[];
+  /** Present when this result is ITSELF an offer: its short text. */
+  label?: string;
+  /** With `label`: the offer's per-workspace limits. */
+  limits?: string;
+  /** The other members of this result's group. */
+  alternatives?: Alternative[];
   /** Recent health. Absent ⇒ no data (never "healthy"). */
   metrics?: EndpointMetrics;
+  /** The endpoint's own workflow hints + pointers to its offers. */
+  hints?: Hints;
 }
 
 export interface DiscoverResponse {
@@ -317,6 +361,10 @@ export interface InspectResponse {
   inputSchema?: Record<string, unknown>;
   price: Price;
   tags?: string[];
+  /** Present only on an offer (free tier / promotion). */
+  offer?: OfferBlock;
+  /** The other members of this endpoint's group. */
+  alternatives?: Alternative[];
   docUrl?: string;
   notes?: string[];
   /** Recent health. Absent ⇒ no data (never "healthy"). */

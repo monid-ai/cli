@@ -7,6 +7,7 @@ import { WEB_BASE_URL } from '../config/constants.js';
 import { renderTable } from './table.js';
 import { statusBadge, healthBadge, price as formatPrice } from './colors.js';
 import type {
+  Alternative,
   BalanceResponse,
   ControlSnapshot,
   DiscoverResponse,
@@ -29,6 +30,7 @@ import type {
   RunError,
   RunDetailResponse,
   RunsListResponse,
+  TagsResponse,
   WhoamiResponse,
   PromoCodesListResponse,
   RedeemPromoCodeResponse,
@@ -60,17 +62,93 @@ export function formatDiscoverResults(data: DiscoverResponse): void {
     'Description',
     'Health',
   ];
-  const rows = data.results.map((r) => [
-    r.provider,
-    r.endpoint,
-    formatPriceCompact(r.price),
-    truncate(r.description, 50),
-    formatHealthCell(r.metrics),
-  ]);
+  const rows: string[][] = [];
+  for (const r of data.results) {
+    // A seated OFFER (free tier / promotion) says so before its
+    // description, and its limits go on the next line — the web search
+    // card's own chip + limits.
+    const description = truncate(
+      r.label ? `[${r.label}] ${r.description}` : r.description,
+      DESCRIPTION_WIDTH,
+    );
+    rows.push([
+      r.provider,
+      r.endpoint,
+      formatPriceCompact(r.price),
+      r.label && r.limits ? `${description}\n${r.limits}` : description,
+      formatHealthCell(r.metrics),
+    ]);
+    // The rest of its group, indented under it: same provider, input and
+    // output — only price and limits differ.
+    const alternatives = r.alternatives ?? [];
+    alternatives.forEach((a, i) => {
+      const branch = i === alternatives.length - 1 ? '└' : '├';
+      rows.push([
+        '',
+        `  ${chalk.gray(branch)} ${a.endpoint}`,
+        formatPriceCompact(a.price),
+        alternativeText(a),
+        '',
+      ]);
+    });
+  }
 
-  renderTable(headers, rows);
+  // The Description column WRAPS (never truncates) so an offer's limits
+  // stay whole: "may answer 429" or "Through 2026-11-30" is what decides
+  // whether it fits the task. Descriptions are already cut to this width.
+  renderTable(headers, rows, { columns: { 3: { maxWidth: DESCRIPTION_WIDTH } } });
 
-  formatHints(data.hints ?? data.usage);
+  formatHints(withoutAlternativesHint(data.hints ?? data.usage));
+}
+
+/** Width of discover's Description column. */
+const DESCRIPTION_WIDTH = 50;
+
+/**
+ * The API's top-level `results[].alternatives` hint points old CLIs at the
+ * JSON field; the indented rows already show it, so the human table drops
+ * it (`--json` keeps it).
+ */
+const ALTERNATIVES_HINT_KEY = 'results[].alternatives';
+
+function withoutAlternativesHint(
+  hints: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!hints || !(ALTERNATIVES_HINT_KEY in hints)) return hints;
+  const { [ALTERNATIVES_HINT_KEY]: _dropped, ...rest } = hints;
+  return rest;
+}
+
+/** Is this alternative an offer (free tier / promotion), not the regular price? */
+function isOffer(a: Alternative): boolean {
+  return a.tags.includes('free') || a.tags.includes('promotion');
+}
+
+/**
+ * An alternative's terms: `[label] limits` for an offer, the bare label
+ * ("Regular price") for the regular endpoint — the web card's chip vs
+ * plain text.
+ */
+function alternativeText(a: Alternative): string {
+  if (!isOffer(a)) return a.limits ? `${a.label} · ${a.limits}` : a.label;
+  return a.limits ? `[${a.label}] ${a.limits}` : `[${a.label}]`;
+}
+
+// --- Tags ---
+
+export function formatTags(data: TagsResponse): void {
+  if (!data.tags?.length) {
+    console.log(chalk.gray('No tags.'));
+    return;
+  }
+  renderTable(
+    ['Tag', 'Meaning'],
+    data.tags.map((t) => [t.tag, t.description]),
+  );
+  console.log();
+  console.log(
+    chalk.gray('Filter discover with --tags <tag,...> / --exclude-tags <tag,...>.'),
+  );
 }
 
 // --- Inspect ---
@@ -113,6 +191,8 @@ export function formatInspectResult(data: InspectResponse): void {
   console.log(chalk.bold('Pricing'));
   formatInspectPricing(data.price);
 
+  formatInspectOffer(data);
+
   formatHealth(data.metrics);
 
   if (data.input) {
@@ -142,6 +222,39 @@ export function formatInspectResult(data: InspectResponse): void {
   formatHints(data.hints ?? data.usage);
 
   console.log();
+}
+
+/**
+ * `Offer` (this endpoint IS a free tier / promotion: its label, limits,
+ * regular endpoint and price) and `Alternatives` (the other members of its
+ * group). Each line only when its field was sent; neither section without
+ * data.
+ */
+function formatInspectOffer(data: InspectResponse): void {
+  const offer = data.offer;
+  if (offer) {
+    console.log();
+    console.log(chalk.bold('Offer'));
+    console.log(`  ${offer.limits ? `${offer.label} — ${offer.limits}` : offer.label}`);
+    if (offer.regularEndpoint) {
+      console.log(`  ${chalk.gray('Regular endpoint:')} ${offer.regularEndpoint}`);
+    }
+    if (offer.listPrice) {
+      console.log(`  ${chalk.gray('Regular price:')} ${formatPriceCompact(offer.listPrice)}`);
+    }
+  }
+
+  const alternatives = data.alternatives ?? [];
+  if (alternatives.length > 0) {
+    console.log();
+    console.log(chalk.bold('Alternatives'));
+    const width = Math.max(...alternatives.map((a) => a.endpoint.length));
+    for (const a of alternatives) {
+      console.log(
+        `  ${a.endpoint.padEnd(width)}  ${formatPriceCompact(a.price)}  ${alternativeText(a)}`,
+      );
+    }
+  }
 }
 
 /** Render the Pricing body. A missing price (null/undefined) is tolerated. */
