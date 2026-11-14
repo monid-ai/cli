@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test';
-import { MonidAPI, retryAfterSeconds } from '../../src/api/client.js';
+import { MonidAPI, normalizeRunCost, retryAfterSeconds } from '../../src/api/client.js';
 import { MonidError } from '../../src/utils/error.js';
 import { VERSION } from '../../src/config/constants.js';
 
@@ -351,14 +351,14 @@ describe('MonidAPI run: provider non-2xx', () => {
     stubFetch(JSON.stringify(RUN_403), 403, 'application/json');
 
     const out = await api.run('contactout', '/v1/email/verify', { email: 'a@b.co' });
-    expect(out).toEqual(RUN_403);
+    expect(out).toEqual({ ...RUN_403, cost: { value: 0, currency: 'USD' } });
   });
 
   it('returns a 502 run body as the run, with the provider error', async () => {
     stubFetch(JSON.stringify(RUN_502), 502, 'application/json');
 
     const out = await api.run('clay', '/enrichment/mobile-phone', { name: 'x' });
-    expect(out).toEqual(RUN_502);
+    expect(out).toEqual({ ...RUN_502, cost: { value: 0, currency: 'USD' } });
   });
 });
 
@@ -399,5 +399,51 @@ describe('MonidAPI rate limiting (429)', () => {
     expect(retryAfterSeconds('not a date', now)).toBeUndefined();
     expect(retryAfterSeconds('', now)).toBeUndefined();
     expect(retryAfterSeconds('2.2', now)).toBe(3);
+  });
+});
+
+describe('run cost envelope', () => {
+  // A sync run body: cost only under billing.reportedCost, in micro-dollars.
+  const syncRun = (billing: unknown, extra: Record<string, unknown> = {}) => ({
+    runId: '01M6PKP89M80WDZDJSJVXW1E7P',
+    provider: 'exa',
+    endpoint: '/search',
+    status: 'COMPLETED',
+    createdAt: '2026-11-05T19:42:38.048Z',
+    billing,
+    ...extra,
+  });
+  const micro = (value: number) => ({ reportedCost: { currency: 'USD', value, unit: 'MICRO_DOLLAR' } });
+
+  it('run: derives cost.value in USD from billing.reportedCost in micro-dollars', async () => {
+    stubFetch(JSON.stringify(syncRun(micro(7000))), 200, 'application/json');
+    const out = await api.run('exa', '/search', { query: 'x' });
+    expect(out.cost).toEqual({ value: 0.007, currency: 'USD' });
+    // The receipt itself is passed through untouched.
+    expect(out.billing).toEqual(micro(7000));
+  });
+
+  it('runs get: derives cost the same way', async () => {
+    stubFetch(JSON.stringify(syncRun(micro(325000))), 200, 'application/json');
+    const out = await api.getRun('01M6PKP89M80WDZDJSJVXW1E7P');
+    expect(out.cost).toEqual({ value: 0.325, currency: 'USD' });
+  });
+
+  it('runs list: derives cost for items that only carry billing', async () => {
+    const body = { items: [syncRun(micro(50000)), syncRun(undefined, { cost: { value: 0.01, currency: 'USD' } })], cursor: null };
+    stubFetch(JSON.stringify(body), 200, 'application/json');
+    const out = await api.listRuns();
+    expect(out.items[0]!.cost).toEqual({ value: 0.05, currency: 'USD' });
+    expect(out.items[1]!.cost).toEqual({ value: 0.01, currency: 'USD' });
+  });
+
+  it('keeps an existing cost, ignoring billing', () => {
+    const run = syncRun(micro(9_000_000), { cost: { value: 0.02, currency: 'USD' } });
+    expect(normalizeRunCost(run).cost).toEqual({ value: 0.02, currency: 'USD' });
+  });
+
+  it('does not invent a cost without billing, or from a unit it does not know', () => {
+    expect(normalizeRunCost(syncRun(undefined)).cost).toBeUndefined();
+    expect(normalizeRunCost(syncRun({ reportedCost: { currency: 'USD', value: 5, unit: 'NANO_DOLLAR' } })).cost).toBeUndefined();
   });
 });

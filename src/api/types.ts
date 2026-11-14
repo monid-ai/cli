@@ -118,6 +118,16 @@ export interface Cost {
   currency: string;
 }
 
+/**
+ * What the run billed, as the backend reports it on a synchronous run body.
+ * Unlike `Cost` (always USD), `reportedCost.value` is in `unit`: with
+ * `MICRO_DOLLAR` it is millionths of a dollar. The client folds it into
+ * `cost` (see `normalizeRunCost`), so consumers read `cost.value` in USD.
+ */
+export interface Billing {
+  reportedCost?: { value: number; currency: string; unit?: string } | null;
+}
+
 export interface RunError {
   source: 'provider' | 'platform';
   message: string;
@@ -335,6 +345,8 @@ export interface RunResponse {
   status: RunStatus;
   price: Price;
   cost?: Cost | null;
+  /** Raw billing receipt; may be the only cost carrier on a sync run body. Prefer `cost`. */
+  billing?: Billing;
   createdAt: string;
   providerResponse?: ProviderResponse;
   /** Control snapshots that blocked the run (present when status is BLOCKED). */
@@ -359,6 +371,8 @@ export interface RunDetailResponse {
   providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
+  /** Raw billing receipt; may be the only cost carrier on a sync run body. Prefer `cost`. */
+  billing?: Billing;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
@@ -390,6 +404,8 @@ export interface RunListItem {
   providerResponse?: ProviderResponse;
   price: Price;
   cost?: Cost | null;
+  /** Raw billing receipt; may be the only cost carrier on a sync run body. Prefer `cost`. */
+  billing?: Billing;
   createdAt: string;
   startedAt?: string;
   completedAt?: string;
