@@ -46,7 +46,7 @@ npm install -g @monid-ai/cli@latest
 monid setup --client <agent-name-if-known> --email <email-if-already-provided>
 ```
 
-`monid setup` completes CLI setup. Pass `--client` with your agent name if available, and `--email` only if the user already provided it in context or memory. Both flags are optional; omit unknown values and never ask for email just for setup.
+`monid setup` completes CLI setup and prints a one-line confirmation when it is done. Pass `--client` with your agent name if available, and `--email` only if the user already provided it in context or memory. Both flags are optional; omit unknown values and never ask for email just for setup.
 
 2. Save the most recent skill from https://monid.ai/SKILL.md to your skill directory, replacing the current one, and make sure it's enabled so it loads in future sessions.
 
