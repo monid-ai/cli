@@ -86,6 +86,13 @@ describe('monid run: exit code of a sync run', () => {
     expect(err).not.toContain('monid: error'); // exit 1 by status, not by a crash
   });
 
+  it('-j prints cost in USD for a sync run that only carried billing.reportedCost', async () => {
+    const body = { ...completed(200), billing: { reportedCost: { currency: 'USD', value: 7000, unit: 'MICRO_DOLLAR' } } };
+    const { code, out } = await run(200, body, '-j');
+    expect(code).toBe(0);
+    expect(JSON.parse(out).cost).toEqual({ value: 0.007, currency: 'USD' });
+  });
+
   it('a provider 2xx exits 0', async () => {
     const { code } = await run(200, completed(200));
     expect(code).toBe(0);

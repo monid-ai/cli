@@ -84,7 +84,7 @@ For scripted or agent use, set `NO_COLOR=1` to disable ANSI color codes in outpu
 2. **Inspect** — Use `monid inspect` to read the input schema. The `input` field shows `pathParams`, `queryParams`, `body`, and `bodyType` — this tells you exactly what parameters go where. Never guess. The `Health` section adds the tail run time.
 3. **Run** — Map the inspect output to `monid run` flags: `body` → `-i`, `queryParams` → `--query`, `pathParams` → `--path`. All three are optional. Use `--wait` to block until completion.
 4. **Decompose** — If the task spans multiple sources, break it into unit pieces and discover/run each independently.
-5. **Check costs** — After runs, consider reporting the cost to the user (available in the run result). Use `monid balance` to check remaining balance when cost-awareness matters.
+5. **Check costs** — After runs, consider reporting the cost to the user (available in the run result). Read it from `cost.value` (USD) — the CLI fills `cost` on every run result, including synchronous ones whose raw receipt is `billing.reportedCost` in `MICRO_DOLLAR` (millionths of a dollar; never add the two). Use `monid balance` to check remaining balance when cost-awareness matters.
 
 ### When NOT to Use Monid
 

@@ -1,6 +1,8 @@
 import { API_BASE_URL, VERSION } from '../config/constants.js';
 import { MonidError } from '../utils/error.js';
 import type {
+  Billing,
+  Cost,
   BalanceResponse,
   DiscoverResponse,
   DisputeRequest,
@@ -52,6 +54,30 @@ export class MonidPublicAPI {
       clearTimeout(timeout);
     }
   }
+}
+
+const MICRO_PER_DOLLAR = 1_000_000;
+
+/**
+ * Give a run body a `cost` in USD whichever way the backend reported it.
+ *
+ * A synchronous run body may carry only `billing.reportedCost`, whose value
+ * is in `unit` (MICRO_DOLLAR: millionths of a dollar), while `runs get` and
+ * `runs list` carry `cost` in USD. Scripts read one field and saw $0 or a
+ * value a million times too large. When `cost` is absent, derive it from
+ * `billing.reportedCost`; an existing `cost` wins, and a unit we do not
+ * recognise is left alone rather than guessed. `billing` is kept as sent.
+ */
+export function normalizeRunCost<T extends { cost?: Cost | null; billing?: Billing }>(run: T): T {
+  if (!run || typeof run !== 'object') return run;
+  if (run.cost !== undefined && run.cost !== null) return run;
+  const reported = run.billing?.reportedCost;
+  if (!reported || typeof reported.value !== 'number' || !Number.isFinite(reported.value)) return run;
+  let usd: number;
+  if (reported.unit === 'MICRO_DOLLAR') usd = reported.value / MICRO_PER_DOLLAR;
+  else if (reported.unit === undefined || reported.unit === 'USD') usd = reported.value;
+  else return run;
+  return { ...run, cost: { value: usd, currency: reported.currency ?? 'USD' } };
 }
 
 /** Total attempts (first try included) for a safely repeatable request. */
@@ -231,11 +257,15 @@ export class MonidAPI {
     const reqBody: Record<string, unknown> = { provider, endpoint };
     if (Object.keys(input).length > 0) reqBody.input = input;
 
-    return this.request('POST', '/v1/run', reqBody, { acceptRunBody: true, label: `${provider} ${endpoint}` });
+    const run = await this.request<RunResponse>('POST', '/v1/run', reqBody, {
+      acceptRunBody: true,
+      label: `${provider} ${endpoint}`,
+    });
+    return normalizeRunCost(run);
   }
 
   async getRun(runId: string): Promise<RunDetailResponse> {
-    return this.request('GET', `/v1/runs/${encodeURIComponent(runId)}`);
+    return normalizeRunCost(await this.request<RunDetailResponse>('GET', `/v1/runs/${encodeURIComponent(runId)}`));
   }
 
   async stopRun(runId: string): Promise<RunStopResponse> {
@@ -267,7 +297,9 @@ export class MonidAPI {
     if (limit !== undefined) params.set('limit', String(limit));
     if (cursor) params.set('cursor', cursor);
     const qs = params.toString();
-    return this.request('GET', `/v1/runs${qs ? `?${qs}` : ''}`);
+    const data = await this.request<RunsListResponse>('GET', `/v1/runs${qs ? `?${qs}` : ''}`);
+    if (Array.isArray(data?.items)) data.items = data.items.map(normalizeRunCost);
+    return data;
   }
 
   // --- Promo codes ---
