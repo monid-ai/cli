@@ -17,7 +17,7 @@ description: >-
 
 Monid lets you discover and access hundreds of tools via a single interface — inspect their schemas, execute them with structured input, and retrieve results.
 
-Install it via npm and get the `monid` command.
+Install it with npm (or without it, see [Installing without npm](#installing-without-npm)) to get the `monid` command.
 
 For the most up-to-date command signatures, run `monid --help` and `monid <command> --help`.
 
@@ -42,7 +42,7 @@ monid --version
 1. Install (or update) the CLI, then run setup:
 
 ```bash
-npm install -g @monid-ai/cli@latest
+npm install -g @monid-ai/cli@latest   # no npm? see "Installing without npm" below
 monid setup --client <agent-name-if-known> --email <email-if-already-provided>
 ```
 
@@ -51,6 +51,46 @@ monid setup --client <agent-name-if-known> --email <email-if-already-provided>
 2. Save the most recent skill from https://monid.ai/SKILL.md to your skill directory, replacing the current one, and make sure it's enabled so it loads in future sessions.
 
 Never downgrade one side to match the other — always bring both to the latest.
+
+### Installing without npm
+
+The CLI is a single bundled file (`dist/index.js`) with no runtime dependencies. It needs only Node.js 20 or newer, and npm is not required. Use the first option that fits:
+
+1. **Another package manager** — any of these installs the same package and puts `monid` on the PATH:
+
+```bash
+pnpm add -g @monid-ai/cli@latest
+yarn global add @monid-ai/cli@latest
+bun add -g @monid-ai/cli@latest
+```
+
+If the package manager says its global bin directory is not on the PATH, run its `setup` step (`pnpm setup`) or add the directory it names to the PATH.
+
+2. **Run from the registry tarball** — when there is no package manager at all, only a Node.js runtime (for example one bundled with your host app). Download and unpack the tarball, then start `dist/index.js` with that Node.js:
+
+```bash
+curl -sL "$(curl -s https://registry.npmjs.org/@monid-ai/cli/latest | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).dist.tarball")" -o monid-cli.tgz
+mkdir -p ~/.monid-cli && tar -xzf monid-cli.tgz -C ~/.monid-cli
+node ~/.monid-cli/package/dist/index.js --version
+```
+
+Use `node <that path>/package/dist/index.js` wherever this skill says `monid`, or wrap it in a launcher script that calls the Node.js you have by its full path (a plain `monid` shim fails with `node: not found` when `node` is not on the PATH). `monid setup` works the same way. Repeat the download to update.
+
+There is no standalone binary yet; Node.js 20+ is still required.
+
+### If `monid` is "not found" after installing
+
+- **The install directory is not on the PATH.** For npm, `npm prefix -g` prints it (on Windows it is `%APPDATA%\npm`; on macOS and Linux the commands are in its `bin` subfolder). Add it to the PATH, or call `monid` by its full path. Non-login shells (such as Git Bash started by an agent) may not read the profile that sets the PATH.
+- **The shell started before the install.** A host app or terminal that was already running keeps the PATH it started with. Restart it, or call `monid` by its full path until you do.
+- **An older `monid` comes first on the PATH.** Compare `monid --version` with the version that was just installed; `which -a monid` (macOS/Linux) or `where monid` (Windows) lists every copy in order. Remove the old one or call the new one by its full path.
+- **`EACCES` / `EPERM` on a global install** (the default prefix is root- or admin-owned). Install into a directory you own, then add its bin directory to the PATH:
+
+```bash
+npm config set prefix ~/.npm-global
+npm install -g @monid-ai/cli@latest
+```
+
+`monid setup` prints nothing when it succeeds: it is a best-effort signal and exits 0. Run `monid --version` to confirm the install.
 
 ### Authentication
 
