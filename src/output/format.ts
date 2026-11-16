@@ -551,9 +551,11 @@ export function formatBalance(data: BalanceResponse): void {
   const value = Math.max(0, data.balance.value);
   const color = value > 0 ? chalk.green : chalk.yellow;
   console.log();
-  console.log(`  Balance: ${color(`$${value.toFixed(2)}`)} ${data.balance.currency}`);
+  // Millionths, like the API's wallet hints and Blocking Controls: one
+  // wallet reads the same number everywhere.
+  console.log(`  Balance: ${color(formatUsd(value))} ${data.balance.currency}`);
   if (data.held && data.held.value > 0) {
-    console.log(`  Held:    $${data.held.value.toFixed(2)} ${chalk.gray('(reserved by runs and resources in progress)')}`);
+    console.log(`  Held:    ${formatUsd(data.held.value)} ${chalk.gray('(reserved by runs and resources in progress)')}`);
   }
   // At $0, say how to fund the wallet — ONE action, like the API's top-up
   // hint: `topup.stripe` is only sent to a key that may create a checkout
@@ -609,7 +611,7 @@ export function formatRedeemPromoCode(
 ): void {
   console.log();
   console.log(`  Redeemed ${chalk.bold(code)}: ${chalk.green(`+$${data.amount.toFixed(2)}`)} ${data.currency}`);
-  console.log(`  Balance:  ${chalk.green(`$${data.balance.value.toFixed(2)}`)} ${data.balance.currency}`);
+  console.log(`  Balance:  ${chalk.green(formatUsd(data.balance.value))} ${data.balance.currency}`);
   console.log();
 }
 
@@ -828,19 +830,24 @@ function formatStructuredInput(input: EndpointInput): void {
  * are rendered as `Label: value`. Absent/empty input renders nothing.
  * `undefined`/`null` values are skipped (never printed). Object/array values
  * are JSON-stringified; everything else is coerced to a string.
+ * `log` picks the stream: stdout for results, `console.error` for an
+ * error's hints.
  */
-export function formatHints(hints: Record<string, unknown> | undefined): void {
+export function formatHints(
+  hints: Record<string, unknown> | undefined,
+  log: (...args: unknown[]) => void = console.log,
+): void {
   if (!hints || typeof hints !== 'object') return;
   const entries = Object.entries(hints).filter(
     ([, value]) => value !== undefined && value !== null,
   );
   if (entries.length === 0) return;
 
-  console.log();
-  console.log(chalk.bold('Hints'));
+  log();
+  log(chalk.bold('Hints'));
   for (const [key, value] of entries) {
     const rendered = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    console.log(`  ${chalk.gray(`${key}:`)} ${rendered}`);
+    log(`  ${chalk.gray(`${key}:`)} ${rendered}`);
   }
 }
 

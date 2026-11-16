@@ -129,22 +129,20 @@ describe('friendlyMessage', () => {
     expect(msg).toContain(`${WEB_BASE_URL}/access/api-keys`);
   });
 
-  it('402 keeps the server message and offers monid topup when the key may', () => {
+  it('402 is the server message only: how to top up is the hint', () => {
     const server =
-      'Not enough wallet balance: this run requires ~$0.35, but your wallet has $0. Top up at https://app.dev.monid.ai/wallet.';
-    const withScope = new MonidError('PAYMENT_REQUIRED', server, 402, {
-      topup: {
-        stripe: '/v1/wallet/topup/sessions',
-        dashboard: 'https://app.dev.monid.ai/wallet',
-      },
+      'Not enough wallet balance: this run requires ~$0.35, but your wallet has $0.00. Top up the workspace wallet to continue.';
+    const err = new MonidError('WALLET_INSUFFICIENT_FUNDS', server, 402, {
+      hints: { 'top up the wallet': 'To top up, run monid topup -a <amount>.' },
     });
-    expect(friendlyMessage(withScope)).toBe(
-      `${server}\n  Or run: monid topup -a <AMOUNT>  (prints a checkout link to pay)`,
+    expect(friendlyMessage(err)).toBe(server);
+  });
+
+  it('402 without a message (a gateway page) points at the dashboard', () => {
+    const err = new MonidError('WALLET_NOT_ACTIVE', 'HTTP 402', 402);
+    expect(friendlyMessage(err)).toBe(
+      `Not enough wallet balance. Top up at ${WEB_BASE_URL}/wallet.`,
     );
-    const noScope = new MonidError('PAYMENT_REQUIRED', server, 402, {
-      topup: { dashboard: 'https://app.dev.monid.ai/wallet' },
-    });
-    expect(friendlyMessage(noScope)).toBe(server);
   });
 });
 
@@ -196,6 +194,17 @@ describe('balance rendering', () => {
     expect(out).toContain('Balance: $3.50 USD');
     expect(out).not.toContain('Top up');
   });
+
+  it('formatBalance shows millionths, like the hints and Blocking Controls', () => {
+    const out = capture(() =>
+      formatBalance({
+        balance: { value: 0.239685, currency: 'USD' },
+        held: { value: 0.02, currency: 'USD' },
+      }),
+    );
+    expect(out).toContain('Balance: $0.239685 USD');
+    expect(out).toContain('Held:    $0.02');
+  });
 });
 
 describe('API error envelope', () => {
@@ -206,19 +215,21 @@ describe('API error envelope', () => {
       new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })) as typeof fetch;
   }
 
-  it('propagates the documented top-level errorCode and the 402 topup hints', async () => {
+  it('propagates the documented top-level errorCode and the 402 top-up hint', async () => {
     try {
       stub(402, {
         code: 402,
         message: 'Wallet has $0.00 yet run needs $0.35.',
         errorCode: 'WALLET_INSUFFICIENT_FUNDS',
+        hints: { 'top up the wallet': 'To top up, run monid topup -a <amount>.' },
+        // Deprecated; still sent by the API, no longer read on errors.
         topup: { stripe: '/v1/wallet/topup/sessions', dashboard: 'https://app.dev.monid.ai/wallet' },
       });
       const err = (await api.whoami().then(() => null, (e: unknown) => e)) as MonidError;
       expect(err.code).toBe('WALLET_INSUFFICIENT_FUNDS');
-      expect(err.topup?.stripe).toBe('/v1/wallet/topup/sessions');
-      expect(friendlyMessage(err)).toContain('Wallet has $0.00 yet run needs $0.35.');
-      expect(friendlyMessage(err)).toContain('monid topup -a <AMOUNT>');
+      expect(err.hints?.['top up the wallet']).toBe('To top up, run monid topup -a <amount>.');
+      // One action, in the hint: the message adds none of its own.
+      expect(friendlyMessage(err)).toBe('Wallet has $0.00 yet run needs $0.35.');
     } finally {
       globalThis.fetch = realFetch;
     }

@@ -119,15 +119,13 @@ describe('handleError', () => {
     });
   });
 
-  it('does not repeat the topup command when the API already sent a top-up hint', () => {
-    const topup = { stripe: '/v1/wallet/topup/sessions', dashboard: 'https://app.monid.ai/wallet' };
+  it('a 402 names ONE top-up action: the API hint, once', () => {
     const withHint = new MonidError('WALLET_INSUFFICIENT_FUNDS', 'Not enough wallet balance.', 402, {
-      topup,
-      hints: { 'top up the wallet': 'To top up, run monid topup -a <amount> or go to https://app.monid.ai/wallet.' },
+      hints: { 'top up the wallet': 'To top up, run monid topup -a <amount>.' },
     });
     handleError(withHint);
     const text = errSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
-    expect(text).not.toContain('Or run: monid topup');
-    expect(text).toContain('To top up, run monid topup -a <amount>');
+    expect(text.match(/monid topup/g)?.length).toBe(1);
+    expect(text).not.toContain('app.monid.ai/wallet');
   });
 });

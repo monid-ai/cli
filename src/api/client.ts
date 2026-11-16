@@ -178,7 +178,6 @@ export class MonidAPI {
       throw new MonidError(code, message, res.status, {
         retryAfterSec: retryAfterSeconds(res.headers.get('retry-after')),
         limitedOn: opts?.label ?? defaultLabel(method, path),
-        topup: data?.topup,
         hints: isHintMap(data?.hints) ? data.hints : undefined,
       });
     }
