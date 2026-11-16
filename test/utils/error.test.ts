@@ -96,4 +96,36 @@ describe('handleError', () => {
     const out = JSON.parse(logSpy.mock.calls[0][0] as string);
     expect(out.error.message).toBe('Rate limited. Please try again later.');
   });
+
+  it("shows the 'monid keys add' tip when the API says UNAUTHENTICATED", () => {
+    handleError(new MonidError('UNAUTHENTICATED', 'Invalid API key', 401));
+    const text = errSpy.mock.calls.map((c) => String(c[0])).join('\n');
+    expect(text).toContain("monid keys add");
+  });
+
+  it('prints the error hints under the message (text) and in --json', () => {
+    const err = new MonidError('NOT_FOUND', "Endpoint '/serch' not found for provider 'tinyfish'", 404, {
+      hints: { 'find the right endpoint': "monid discover -q 'tinyfish /serch'" },
+    });
+    handleError(err);
+    const text = errSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    expect(text).toContain('Hints');
+    expect(text).toContain("monid discover -q 'tinyfish /serch'");
+
+    handleError(err, true);
+    const out = JSON.parse(logSpy.mock.calls[0][0] as string);
+    expect(out.error.hints).toEqual({
+      'find the right endpoint': "monid discover -q 'tinyfish /serch'",
+    });
+  });
+
+  it('a 402 names ONE top-up action: the API hint, once', () => {
+    const withHint = new MonidError('WALLET_INSUFFICIENT_FUNDS', 'Not enough wallet balance.', 402, {
+      hints: { 'top up the wallet': 'To top up, run monid topup -a <amount>.' },
+    });
+    handleError(withHint);
+    const text = errSpy.mock.calls.map((c) => c.map(String).join(' ')).join('\n');
+    expect(text.match(/monid topup/g)?.length).toBe(1);
+    expect(text).not.toContain('app.monid.ai/wallet');
+  });
 });

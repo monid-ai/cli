@@ -660,8 +660,10 @@ export interface ApiErrorResponse {
   message?: string;
   /** Documented machine code from the ApiErrorCode registry (e.g. `WALLET_INSUFFICIENT_FUNDS`). */
   errorCode?: string;
-  /** Funding hints on a 402 `WALLET_INSUFFICIENT_FUNDS`. */
+  /** @deprecated Funding links on a 402 `WALLET_INSUFFICIENT_FUNDS`; `hints["top up the wallet"]` replaces them. */
   topup?: TopupHints;
+  /** Next steps for this error, already rendered for the CLI (`monid …`). */
+  hints?: Record<string, unknown>;
 }
 
 // --- Top-up ---

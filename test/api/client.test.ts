@@ -32,17 +32,55 @@ describe('MonidAPI request error handling', () => {
     const err = await api.whoami().then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(MonidError);
     expect((err as MonidError).statusCode).toBe(502);
-    expect((err as MonidError).code).toBe('HTTP_502');
+    // The API's status default for 502 — same code with or without a body.
+    expect((err as MonidError).code).toBe('BAD_GATEWAY');
     expect((err as MonidError).message).toBe('HTTP 502');
     expect((err as MonidError).message).not.toContain('Unexpected token');
   });
 
-  it('keeps the mapped code for a non-JSON 401', async () => {
+  it('maps a non-JSON 401 to the API status default', async () => {
     stubFetch(GATEWAY_HTML, 401, 'text/html');
 
     const err = await api.whoami().then(() => null, (e: unknown) => e);
-    expect((err as MonidError).code).toBe('AUTH_FAILED');
+    expect((err as MonidError).code).toBe('UNAUTHENTICATED');
     expect((err as MonidError).statusCode).toBe(401);
+  });
+
+  it('reports UNAUTHENTICATED for a 401 from an older API (no errorCode) and a current one', async () => {
+    stubFetch(JSON.stringify({ code: 401, message: 'Invalid API key' }), 401, 'application/json');
+    const older = await api.whoami().then(() => null, (e: unknown) => e);
+    stubFetch(
+      JSON.stringify({ code: 401, message: 'Invalid API key', errorCode: 'UNAUTHENTICATED' }),
+      401,
+      'application/json',
+    );
+    const current = await api.whoami().then(() => null, (e: unknown) => e);
+    expect((older as MonidError).code).toBe('UNAUTHENTICATED');
+    expect((current as MonidError).code).toBe('UNAUTHENTICATED');
+  });
+
+  it('passes a specific API errorCode and its hints through', async () => {
+    stubFetch(
+      JSON.stringify({
+        code: 400,
+        message: 'Invalid input for /search: body.q: expected string',
+        errorCode: 'VALIDATION_FAILED',
+        hints: { "see the endpoint's input schema": 'monid inspect -p tinyfish -e /search' },
+      }),
+      400,
+      'application/json',
+    );
+    const err = (await api.whoami().then(() => null, (e: unknown) => e)) as MonidError;
+    expect(err.code).toBe('VALIDATION_FAILED');
+    expect(err.hints).toEqual({
+      "see the endpoint's input schema": 'monid inspect -p tinyfish -e /search',
+    });
+  });
+
+  it('keeps HTTP_<status> for a status the API has no default for', async () => {
+    stubFetch(GATEWAY_HTML, 504, 'text/html');
+    const err = (await api.whoami().then(() => null, (e: unknown) => e)) as MonidError;
+    expect(err.code).toBe('HTTP_504');
   });
 
   it('still prefers a structured API error message over the status', async () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, spyOn } from 'bun:test';
-import { formatRunDetail } from '../../src/output/format.js';
+import { formatRunDetail, formatUsd } from '../../src/output/format.js';
 import type { RunDetailResponse } from '../../src/api/types.js';
 
 function capture(run: RunDetailResponse): string {
@@ -58,8 +58,8 @@ describe('blocking controls', () => {
       ],
     });
     expect(out).toContain('Workspace Run Cap');
-    expect(out).toContain('Limit:     $0.0100');
-    expect(out).toContain('Required:  $0.0300');
+    expect(out).toContain('Limit:     $0.01');
+    expect(out).toContain('Required:  $0.03');
   });
 
   it('renders a budget block', () => {
@@ -84,11 +84,11 @@ describe('blocking controls', () => {
     });
     expect(out).toContain('Workspace Budget');
     expect(out).toContain('Period:    DAY');
-    expect(out).toContain('Limit:     $0.1000');
-    expect(out).toContain('Available: $0.0000');
-    expect(out).toContain('Held:      $0.0500');
-    expect(out).toContain('Spent:     $0.0500');
-    expect(out).toContain('Required:  $0.3000');
+    expect(out).toContain('Limit:     $0.10');
+    expect(out).toContain('Available: $0.00');
+    expect(out).toContain('Held:      $0.05');
+    expect(out).toContain('Spent:     $0.05');
+    expect(out).toContain('Required:  $0.30');
   });
 
   it('renders a wallet balance block', () => {
@@ -110,10 +110,45 @@ describe('blocking controls', () => {
       ],
     });
     expect(out).toContain('Wallet Balance');
-    expect(out).toContain('Balance:   $0.1000');
-    expect(out).toContain('Available: $0.1000');
-    expect(out).toContain('Required:  $0.3000');
+    expect(out).toContain('Balance:   $0.10');
+    expect(out).toContain('Available: $0.10');
+    expect(out).toContain('Required:  $0.30');
     expect(out).not.toContain('"type"'); // not the raw JSON fallback
+  });
+
+  it('shows wallet amounts in millionths of a dollar', () => {
+    const out = capture({
+      ...base,
+      controls: [
+        {
+          controlId: 'WALLET_BALANCE',
+          controlType: 'WORKSPACE_WALLET_BALANCE',
+          requiredAmount: 0.5,
+          snapshot: {
+            type: 'WORKSPACE_WALLET_BALANCE',
+            limitAmount: 0.239685,
+            availableAmount: 0.219685,
+            heldAmount: 0.02,
+            syncedAt: '2026-07-11T00:00:00.000Z',
+          },
+        },
+      ],
+    });
+    expect(out).toContain('Balance:   $0.239685');
+    expect(out).toContain('Held:      $0.02');
+    expect(out).toContain('Available: $0.219685');
+    expect(out).toContain('Required:  $0.50');
+  });
+
+  it('formatUsd: up to six decimals, always cents, never negative', () => {
+    expect(formatUsd(0.219685)).toBe('$0.219685');
+    expect(formatUsd(0.5)).toBe('$0.50');
+    expect(formatUsd(0)).toBe('$0.00');
+    expect(formatUsd(0.016)).toBe('$0.016');
+    expect(formatUsd(12)).toBe('$12.00');
+    expect(formatUsd(-0.2)).toBe('$0.00');
+    expect(formatUsd(0.0000004)).toBe('$0.00');
+    expect(formatUsd('x')).toBe('-');
   });
 
   it('never crashes on a missing or malformed amount', () => {
