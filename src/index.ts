@@ -1,4 +1,5 @@
 import { Command } from '@cliffy/command';
+import { configureNetwork } from './utils/network.js';
 import { VERSION } from './config/constants.js';
 import { balanceCommand } from './commands/balance.js';
 import { topupCommand } from './commands/topup.js';
@@ -14,6 +15,8 @@ import { generateSessionIdCommand } from './commands/generate-session-id.js';
 import { feedbackCommand } from './commands/feedback.js';
 import { disputeCommand } from './commands/dispute.js';
 import { walletCommand } from './commands/wallet/index.js';
+
+configureNetwork();
 
 const cli = new Command()
   .name('monid')

@@ -1,5 +1,6 @@
 import { API_BASE_URL, VERSION } from '../config/constants.js';
 import { MonidError } from '../utils/error.js';
+import { canApplyProxyInProcess, hasProxyEnv } from '../utils/network.js';
 import type {
   BalanceResponse,
   DiscoverResponse,
@@ -389,12 +390,58 @@ function networkError(
       'No response was received, so the request may or may not have been applied. ' +
       'Check its effect before repeating it.';
   }
+  const env = networkEnvHint(cause);
   const err = new MonidError(
     'NETWORK_ERROR',
-    `Network request failed${tried} (${method} ${path}): ${detail}. ${hint}`,
+    `Network request failed${tried} (${method} ${path}): ${detail}. ${hint}${env ? ` ${env}` : ''}`,
   );
   (err as Error & { cause?: unknown }).cause = cause;
   return err;
+}
+
+/**
+ * Node-specific fixes for failures where curl works. Returns '' when the
+ * cause is not one of them.
+ */
+export function networkEnvHint(
+  cause: unknown,
+  env: NodeJS.ProcessEnv = process.env,
+  proxyInProcess: boolean = canApplyProxyInProcess(),
+): string {
+  const codes: string[] = [];
+  const msgs: string[] = [];
+  for (let e: unknown = cause, i = 0; e instanceof Error && i < 4; i++) {
+    const code = (e as Error & { code?: string }).code;
+    if (code) codes.push(code);
+    msgs.push(e.message);
+    e = (e as Error & { cause?: unknown }).cause;
+  }
+  const text = msgs.join(' ');
+  const has = (...c: string[]) => c.some((x) => codes.includes(x));
+
+  if (
+    has('UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+      'SELF_SIGNED_CERT_IN_CHAIN', 'DEPTH_ZERO_SELF_SIGNED_CERT') ||
+    /local issuer certificate/i.test(text)
+  ) {
+    return (
+      "Node does not use the system certificate store: if a proxy or firewall re-signs HTTPS, " +
+      'point NODE_EXTRA_CA_CERTS at its CA bundle (e.g. /etc/ssl/cert.pem) or set NODE_USE_SYSTEM_CA=1.'
+    );
+  }
+  if (has('ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED')) {
+    if (hasProxyEnv(env) && env.NODE_USE_ENV_PROXY !== '1' && !proxyInProcess) {
+      return (
+        'A proxy variable (HTTPS_PROXY/HTTP_PROXY) is set but this Node ignores it for fetch; ' +
+        'upgrade to Node 22.21+/24.5+, which the CLI then configures itself, or start it with NODE_USE_ENV_PROXY=1 on Node 24.0+.'
+      );
+    }
+    return (
+      'If curl reaches the API from this host, check for a proxy (set HTTPS_PROXY and NODE_USE_ENV_PROXY=1) ' +
+      'or a broken IPv6 route (try NODE_OPTIONS=--dns-result-order=ipv4first).'
+    );
+  }
+  return '';
 }
 
 /** `fetch failed` hides the real reason in `cause` (e.g. ECONNRESET). */
