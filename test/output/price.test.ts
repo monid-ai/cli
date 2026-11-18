@@ -123,6 +123,50 @@ describe('formatPriceCompact', () => {
     expect(plain(formatPriceCompact(p))).toBe('$0.05 / 1K characters');
   });
 
+  it('renders a per-second matrix range with its unit, never a bare "/ 1"', () => {
+    const second = (value: number) => ({
+      type: 'METERED',
+      amount: { value, currency: 'USD' },
+      per: 1,
+      unit: 'second',
+    });
+    const p: Price = {
+      type: 'PER_UNIT_MATRIX',
+      amount: { value: 0.084, currency: 'USD' },
+      selectors: [{ label: 'Audio', key: 'audio', in: 'body' }],
+      variants: [
+        { when: { audio: false }, price: second(0.084) },
+        { when: { audio: true }, price: second(0.42) },
+      ],
+    };
+    const out = plain(formatPriceCompact(p));
+    expect(out).toBe('$0.084-$0.42 / second');
+    expect(out).not.toMatch(/\/ 1$/);
+  });
+
+  it('renders a METERED matrix range whose leaves carry a {unit,count} period', () => {
+    const minute = (value: number) => ({
+      type: 'METERED',
+      amount: { value, currency: 'USD' },
+      per: { unit: 'MINUTE', count: 1 },
+    });
+    const p: Price = {
+      type: 'PER_UNIT_MATRIX',
+      amount: { value: 0.1, currency: 'USD' },
+      variants: [{ when: { r: 'a' }, price: minute(0.1) }, { when: { r: 'b' }, price: minute(0.3) }],
+    };
+    expect(plain(formatPriceCompact(p))).toBe('$0.1-$0.3 / minute');
+  });
+
+  it('drops a divisor of 1 that has no unit instead of printing "/ 1"', () => {
+    const p: Price = {
+      type: 'PER_UNIT_MATRIX',
+      amount: { value: 2, currency: 'USD' },
+      variants: [{ when: { r: 'a' }, price: { type: 'METERED', amount: { value: 2, currency: 'USD' }, per: 1 } }],
+    };
+    expect(plain(formatPriceCompact(p))).toBe('$2');
+  });
+
   it('renders TIERED with a PER_CALL default + gated tier as "from $X/call"', () => {
     // The Octen /search shape.
     const p: Price = {
