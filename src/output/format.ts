@@ -955,7 +955,8 @@ function compactCount(n: number): string {
  * expressions (LEAF prices on the current wire — the SAME shape for matrix
  * cells, TIERED tiers, and the top-level `default` of both):
  *  - PER_TOKEN → `$5.6 / 1M tokens` (numeric `per` divisor + `unit`)
- *  - METERED   → `$0.15 / minute` ({unit,count} `per`)
+ *  - METERED   → `$0.15 / minute` ({unit,count} `per`, or a numeric `per`
+ *                divisor + `unit`: `$0.084 / second`)
  *  - PER_RESULT → `$0.001 / result`
  *  - PER_CALL / bare money → `$0.28`
  * Degrades gracefully — never `[object Object]`.
@@ -963,43 +964,47 @@ function compactCount(n: number): string {
 function formatAmount(a: PriceAmount | undefined): string {
   if (a == null) return chalk.gray('n/a');
   if (typeof a === 'number') return `$${a}`;
-  if (isNestedPrice(a)) {
-    const inner = formatAmount(a.amount);
-    if (typeof a.per === 'number') {
-      const unit = nestedUnitLabel(a);
-      return `${inner} / ${compactCount(a.per)}${unit ? ` ${unit}` : ''}`;
-    }
-    if (a.per != null) {
-      // {unit,count} quantum (a METERED leaf).
-      return `${inner} / ${unitLabel(a.per)}`;
-    }
-    if (a.type === 'PER_RESULT') return `${inner} / result`;
-    return inner;
-  }
+  if (isNestedPrice(a)) return `${formatAmount(a.amount)}${perUnitSuffix(a)}`;
   // Plain { value, currency } money leaf.
   return typeof a.value === 'number' ? `$${a.value}` : chalk.gray('n/a');
 }
 
-/** Map a nested per-unit price to its counted noun (best effort). */
-function nestedUnitLabel(a: NestedPrice): string {
-  switch (a.type) {
-    case 'PER_TOKEN':
-      return a.unit === 'character' ? 'characters' : 'tokens';
-    default:
-      return '';
-  }
+/** "token" → "tokens"; leaves an already-plural noun alone. */
+function pluralize(noun: string): string {
+  return noun.endsWith('s') ? noun : `${noun}s`;
 }
 
 /**
- * The per-unit suffix (e.g. ` / 1M tokens`) for a `PriceAmount`, or `''` when
- * the amount is not a nested per-unit price. Used to append a shared unit after
- * a min–max range so we render `$4-$7 / 1M tokens` rather than repeating it.
+ * The counted noun of a nested per-unit price: its `unit` when it names one
+ * (`second`, `character`…), `token` for a PER_TOKEN leaf without one, else ''.
+ */
+function nestedUnitNoun(a: NestedPrice): string {
+  const unit = a.unit?.toLowerCase();
+  if (unit) return unit;
+  return a.type === 'PER_TOKEN' ? 'token' : '';
+}
+
+/**
+ * The per-unit suffix (e.g. ` / 1M tokens`, ` / second`) for a `PriceAmount`,
+ * or `''` when the amount is not a nested per-unit price. A divisor of 1 is
+ * implied by the noun (`/ second`, never a bare `/ 1`); a divisor with no
+ * known noun is dropped rather than shown as a dangling number. Used to
+ * append a shared unit after a min–max range so we render `$4-$7 / 1M tokens`
+ * rather than repeating it.
  */
 function perUnitSuffix(a: PriceAmount | undefined): string {
   if (a == null || typeof a === 'number' || !isNestedPrice(a)) return '';
-  if (typeof a.per !== 'number') return '';
-  const unit = nestedUnitLabel(a);
-  return ` / ${compactCount(a.per)}${unit ? ` ${unit}` : ''}`;
+  if (typeof a.per === 'number') {
+    const noun = nestedUnitNoun(a);
+    if (a.per === 1) return noun ? ` / ${noun}` : '';
+    return ` / ${compactCount(a.per)}${noun ? ` ${pluralize(noun)}` : ''}`;
+  }
+  if (a.per != null) {
+    // {unit,count} quantum (a METERED leaf).
+    return ` / ${unitLabel(a.per)}`;
+  }
+  if (a.type === 'PER_RESULT') return ' / result';
+  return '';
 }
 
 /** A matrix variant's cell — current wire `price`, old wire `amount`. */
