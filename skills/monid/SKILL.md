@@ -292,6 +292,12 @@ monid run -p bytedance -e /seedance… -i '{"imageUrl": "<url from step 3>"}'
 # Downloading works the same way: /cat returns a signed url — curl it
 curl -o photo.png '<url from /cat>'
 
+# List files: the workspace root is addressed by OMITTING path. `"/"` and
+# `""` are rejected (400 InvalidPath); a path that does not exist is a 404, so
+# a new, empty workspace has nothing to list below the root yet.
+monid run -p sfs -e /ls -i '{}' -w
+monid run -p sfs -e /ls -i '{"path":"in"}' -w
+
 # Cleanup is yours (files are never auto-deleted; /rm frees quota space)
 monid run -p sfs -e /rm -i '{"path":"in/photo.png"}' -w
 ```

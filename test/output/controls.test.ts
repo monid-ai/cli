@@ -139,3 +139,33 @@ describe('blocking controls', () => {
     expect(out).not.toContain('Required:');
   });
 });
+
+describe('sfs /ls refusals', () => {
+  const ls = (httpStatus?: number, endpoint = '/ls', provider = 'sfs') =>
+    ({
+      ...base,
+      provider,
+      endpoint,
+      status: 'COMPLETED',
+      providerResponse: httpStatus === undefined ? {} : { httpStatus },
+    }) as unknown as RunDetailResponse;
+
+  it('tells how to list the root after a 400 on "/"', () => {
+    const out = capture(ls(400));
+    expect(out).toContain('omit "path"');
+    expect(out).toContain(`monid run -p sfs -e /ls -i '{}'`);
+  });
+
+  it('says a new workspace is empty after a 404', () => {
+    const out = capture(ls(404));
+    expect(out).toContain('workspace is empty');
+    expect(out).toContain(`monid run -p sfs -e /ls -i '{}'`);
+  });
+
+  it('stays quiet on success, other endpoints and other providers', () => {
+    expect(capture(ls(200))).not.toContain('omit "path"');
+    expect(capture(ls(400, '/rm'))).not.toContain('omit "path"');
+    expect(capture(ls(400, '/ls', 'apify'))).not.toContain('omit "path"');
+    expect(capture(ls())).not.toContain('omit "path"');
+  });
+});
