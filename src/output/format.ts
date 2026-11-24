@@ -490,7 +490,34 @@ export function formatRunDetail(data: RunDetailResponse): void {
 
   formatHints(data.hints ?? data.usage);
 
+  const sfsHint = sfsListHint(data);
+  if (sfsHint) {
+    console.log();
+    console.log(chalk.dim(sfsHint));
+  }
+
   console.log();
+}
+
+/**
+ * The sfs `/ls` endpoint addresses the workspace root by OMITTING `path`: it
+ * answers 400 InvalidPath for `"/"` or `""`, and 404 for a path that does not
+ * exist (every path, on a workspace that has no files yet). Neither error says
+ * how to list the root, so name it.
+ */
+export function sfsListHint(
+  data: Pick<RunDetailResponse, 'provider' | 'endpoint' | 'providerResponse'>,
+): string | undefined {
+  if (data.provider !== 'sfs' || data.endpoint !== '/ls') return undefined;
+  const status = data.providerResponse?.httpStatus;
+  const root = `monid run -p sfs -e /ls -i '{}' -w`;
+  if (status === 400) {
+    return `To list the workspace root, omit "path" instead of passing "/" or "": ${root}`;
+  }
+  if (status === 404) {
+    return `Nothing exists at that path. A new workspace is empty until you upload with /put; list the root by omitting "path": ${root}`;
+  }
+  return undefined;
 }
 
 // --- Runs List ---
