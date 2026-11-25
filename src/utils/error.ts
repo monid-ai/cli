@@ -175,3 +175,54 @@ export function handleError(err: unknown, json: boolean = false): void {
 
   process.exitCode = 1;
 }
+
+/** Which of `monid run`'s input flags the user passed. */
+export interface RunInputFlags {
+  body: boolean;
+  query: boolean;
+  path: boolean;
+}
+
+/**
+ * The API reports a field in the wrong place as a validation error that names
+ * only the slot it looked in (`queryParams.q: expected string, received
+ * undefined`). It cannot know the user put the value under -i. The CLI can:
+ * when the error names `queryParams.<f>`, `pathParams.<f>` or `body.<f>` and
+ * the matching flag was not passed, say which flag carries that slot.
+ * Returns '' when there is nothing useful to add.
+ */
+export function misplacedInputHint(message: string, passed: RunInputFlags): string {
+  const slots = [
+    { key: 'queryParams', flag: '--query', label: 'query parameter', used: passed.query },
+    { key: 'pathParams', flag: '--path', label: 'path parameter', used: passed.path },
+    { key: 'body', flag: '-i', label: 'body field', used: passed.body },
+  ];
+  for (const slot of slots) {
+    if (slot.used) continue;
+    const m = new RegExp(`\\b${slot.key}\\.([\\w.-]+)`).exec(message);
+    if (!m) continue;
+    const field = m[1]!;
+    const where = passed.body && slot.key !== 'body'
+      ? ' (-i is the request body, not query or path parameters)'
+      : '';
+    return (
+      `Hint: "${field}" is a ${slot.label} for this endpoint. ` +
+      `Pass it with ${slot.flag} '{"${field}": ...}'${where}. ` +
+      `Run "monid inspect" to see which flag each field belongs to.`
+    );
+  }
+  return '';
+}
+
+/** `-i` takes a JSON string; say so, and point at -f when it looks like a file. */
+export function invalidBodyJsonMessage(input: string, fileExists: boolean): string {
+  const base = 'Invalid JSON input. Use -i \'{"key": "value"}\' format.';
+  const looksJson = /^\s*[{[]/.test(input);
+  if (fileExists) {
+    return `${base}\n  "${input}" is a file: -i takes the JSON itself. Read it with -f ${input} (--input-file).`;
+  }
+  if (!looksJson) {
+    return `${base}\n  To read the body from a file, use -f <path> (--input-file).`;
+  }
+  return base;
+}

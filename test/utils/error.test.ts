@@ -97,3 +97,29 @@ describe('handleError', () => {
     expect(out.error.message).toBe('Rate limited. Please try again later.');
   });
 });
+
+import { misplacedInputHint, invalidBodyJsonMessage } from '../../src/utils/error.js';
+
+describe('misplacedInputHint', () => {
+  const none = { body: false, query: false, path: false };
+  it('names --query for a missing queryParams field', () => {
+    expect(misplacedInputHint('queryParams.q: expected string, received undefined', { ...none, body: true })).toContain("--query '{\"q\": ...}'");
+  });
+  it('names --path and -i for the other slots', () => {
+    expect(misplacedInputHint('pathParams.id required', none)).toContain('--path');
+    expect(misplacedInputHint('body.url required', none)).toContain("-i '");
+  });
+  it('is empty when the flag was passed or the message names no slot', () => {
+    expect(misplacedInputHint('queryParams.q required', { ...none, query: true })).toBe('');
+    expect(misplacedInputHint('something else', none)).toBe('');
+  });
+});
+
+describe('invalidBodyJsonMessage', () => {
+  it('points an existing file at -f', () => {
+    expect(invalidBodyJsonMessage('in.json', true)).toContain('-f in.json');
+  });
+  it('leaves malformed inline JSON alone', () => {
+    expect(invalidBodyJsonMessage('{bad', false)).not.toContain('-f');
+  });
+});

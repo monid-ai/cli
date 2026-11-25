@@ -156,3 +156,32 @@ describe('monid run: exit code of a sync run', () => {
     expect(parsed.error.status).toBe('RUNNING');
   });
 });
+
+describe('monid run: input placed under the wrong flag', () => {
+  const missingQ = { code: 400, message: 'Invalid input: queryParams.q: expected string, received undefined' };
+
+  it('a 400 naming queryParams.q after -i points at --query', async () => {
+    const { code, err } = await run(400, missingQ, '-i', '{"q": "shoes"}');
+    expect(code).toBe(1);
+    expect(err).toContain('queryParams.q');
+    expect(err).toContain(`--query '{"q": ...}'`);
+    expect(err).toContain('-i is the request body');
+  });
+
+  it('is also in the --json error message', async () => {
+    const { out } = await run(400, missingQ, '-i', '{"q": "shoes"}', '-j');
+    expect(JSON.parse(out).error.message).toContain('--query');
+  });
+
+  it('adds nothing when --query was already passed', async () => {
+    const { err } = await run(400, missingQ, '--query', '{"x": 1}');
+    expect(err).not.toContain('Hint:');
+  });
+
+  it('-i with a file path says to use -f', async () => {
+    const { code, err } = await run(200, {}, '-i', 'input.json');
+    expect(code).toBe(1);
+    expect(err).toContain('-f');
+    expect(err).toContain('--input-file');
+  });
+});
