@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
-import { handleError, MonidError, withRunContext } from '../utils/error.js';
+import { handleError, invalidBodyJsonMessage, misplacedInputHint, MonidError, withRunContext } from '../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
 import { formatRunDetail, resolveOutput, writeRunOutput, writeRunOutputJson, formatHints } from '../output/format.js';
 import {
@@ -60,7 +60,7 @@ export const runCommand = new Command()
         try {
           bodyData = JSON.parse(input);
         } catch {
-          throw new Error('Invalid JSON input. Use -i \'{"key": "value"}\' format.');
+          throw new Error(invalidBodyJsonMessage(input, existsSync(input)));
         }
       } else if (inputFile) {
         try {
@@ -218,6 +218,16 @@ export const runCommand = new Command()
             ? (err.lastResult as RunDetailResponse).status
             : createdRun.status;
         err = withRunContext(err, { runId: createdRun.runId, status });
+      }
+      // A 400 that names `queryParams.q` etc. does not say the value was sent
+      // under the wrong flag; say which flag carries that slot.
+      if (err instanceof MonidError && err.statusCode === 400) {
+        const hint = misplacedInputHint(err.message, {
+          body: Boolean(input || inputFile),
+          query: Boolean(queryRaw),
+          path: Boolean(pathRaw),
+        });
+        if (hint) err.message = `${err.message}\n  ${hint}`;
       }
       handleError(err, json);
     }
