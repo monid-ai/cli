@@ -401,3 +401,76 @@ describe('MonidAPI rate limiting (429)', () => {
     expect(retryAfterSeconds('2.2', now)).toBe(3);
   });
 });
+
+/** A fetch that never answers; like the real one, it rejects when aborted. */
+function stallingFetch(opts: { afterHeaders: boolean }): void {
+  globalThis.fetch = ((_url: unknown, init?: RequestInit) =>
+    new Promise<Response>((resolve, reject) => {
+      const signal = init?.signal;
+      const abort = () => reject(new Error('aborted'));
+      if (!opts.afterHeaders) {
+        signal?.addEventListener('abort', abort);
+        return;
+      }
+      // Headers arrive, the body never finishes.
+      const body = new ReadableStream({
+        start(controller) {
+          signal?.addEventListener('abort', () => controller.error(new Error('terminated')));
+        },
+      });
+      resolve(new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }));
+    })) as typeof fetch;
+}
+
+describe('MonidAPI request deadline', () => {
+  const quick = () =>
+    new MonidAPI({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.example.test',
+      requestTimeoutMs: 50,
+      retryDelayMs: 1,
+    });
+
+  it('gives up on a run request that never gets a response, without repeating it', async () => {
+    // Regression: no deadline, so `monid run` waited forever and printed nothing.
+    stallingFetch({ afterHeaders: false });
+    let calls = 0;
+    const inner = globalThis.fetch;
+    globalThis.fetch = ((...a: Parameters<typeof fetch>) => {
+      calls++;
+      return inner(...a);
+    }) as typeof fetch;
+
+    const err = await quick().run('search1api', '/search').then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(MonidError);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).toContain('no complete response');
+    expect((err as MonidError).message).toContain('monid runs list');
+    expect(calls).toBe(1); // a paid POST is never retried
+  });
+
+  it('gives up on a response whose body stalls after the headers', async () => {
+    stallingFetch({ afterHeaders: true });
+    const err = await quick().run('search1api', '/search').then(() => null, (e: unknown) => e);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).toContain('no complete response');
+  });
+
+  it('retries a stalled read, then gives up', async () => {
+    stallingFetch({ afterHeaders: false });
+    const err = await quick().getRun('run_1').then(() => null, (e: unknown) => e);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).toContain('after 3 attempts');
+  });
+
+  it('does not start another attempt past a caller deadline', async () => {
+    stallingFetch({ afterHeaders: false });
+    const started = Date.now();
+    const err = await quick()
+      .getRun('run_1', { deadline: started + 30 })
+      .then(() => null, (e: unknown) => e);
+    expect((err as MonidError).code).toBe('NETWORK_ERROR');
+    expect((err as MonidError).message).not.toContain('attempts');
+    expect(Date.now() - started).toBeLessThan(45);
+  });
+});

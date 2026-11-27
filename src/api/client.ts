@@ -57,23 +57,39 @@ export class MonidPublicAPI {
 /** Total attempts (first try included) for a safely repeatable request. */
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_DELAY_MS = 250;
+/**
+ * How long one request may take, response headers AND body included. fetch has
+ * no deadline of its own: a connection that goes quiet (a proxy that holds the
+ * socket open, a response that never finishes) left `monid run` waiting forever
+ * with nothing printed, even though the run had already completed server-side.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/** Per-call limits on top of the client default. */
+export interface RequestLimits {
+  /** Absolute time (ms since epoch) after which no attempt may still be waiting. */
+  deadline?: number;
+}
 
 export class MonidAPI {
   private baseUrl: string;
   private apiKey: string;
   private maxAttempts: number;
   private retryDelayMs: number;
+  private requestTimeoutMs: number;
 
   constructor(config: {
     baseUrl?: string;
     apiKey: string;
     maxAttempts?: number;
     retryDelayMs?: number;
+    requestTimeoutMs?: number;
   }) {
     this.baseUrl = (config.baseUrl ?? API_BASE_URL).replace(/\/+$/, '');
     this.apiKey = config.apiKey;
     this.maxAttempts = Math.max(1, config.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
     this.retryDelayMs = config.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+    this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /**
@@ -97,21 +113,42 @@ export class MonidAPI {
     url: string,
     init: RequestInit,
     retryable: boolean,
+    limits?: RequestLimits,
   ): Promise<{ res: Response; raw: string }> {
     const attempts = retryable ? this.maxAttempts : 1;
     for (let attempt = 1; ; attempt++) {
+      // One timer per attempt, cleared only after the body is read, so a
+      // response that stalls mid-body is bounded too. Aborting also closes
+      // the socket, so nothing keeps the process alive afterwards.
+      const controller = new AbortController();
+      const budget = limits?.deadline
+        ? Math.max(1, Math.min(this.requestTimeoutMs, limits.deadline - Date.now()))
+        : this.requestTimeoutMs;
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, budget);
       try {
-        const res = await fetch(url, init);
+        const res = await fetch(url, { ...init, signal: controller.signal });
         const raw = res.status === 204 ? '' : await res.text();
         return { res, raw };
       } catch (cause) {
-        if (attempt < attempts) {
+        if (timedOut) {
+          cause = new Error(
+            `no complete response within ${Math.max(1, Math.round(budget / 1000))}s`,
+          );
+        }
+        const pastDeadline = limits?.deadline !== undefined && Date.now() >= limits.deadline;
+        if (attempt < attempts && !pastDeadline) {
           await new Promise((r) =>
             setTimeout(r, this.retryDelayMs * 2 ** (attempt - 1)),
           );
           continue;
         }
         throw networkError(method, path, cause, attempt, retryable);
+      } finally {
+        clearTimeout(timer);
       }
     }
   }
@@ -125,6 +162,7 @@ export class MonidAPI {
       acceptRunBody?: boolean;
       /** Human label for a rate-limit message (`discover`, `tinyfish /search`). */
       label?: string;
+      limits?: RequestLimits;
     },
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
@@ -140,6 +178,7 @@ export class MonidAPI {
       url,
       { method, headers, body: body ? JSON.stringify(body) : undefined },
       method === 'GET' || opts?.idempotent === true,
+      opts?.limits,
     );
 
     if (res.status === 204) {
@@ -234,8 +273,8 @@ export class MonidAPI {
     return this.request('POST', '/v1/run', reqBody, { acceptRunBody: true, label: `${provider} ${endpoint}` });
   }
 
-  async getRun(runId: string): Promise<RunDetailResponse> {
-    return this.request('GET', `/v1/runs/${encodeURIComponent(runId)}`);
+  async getRun(runId: string, limits?: RequestLimits): Promise<RunDetailResponse> {
+    return this.request('GET', `/v1/runs/${encodeURIComponent(runId)}`, undefined, { limits });
   }
 
   async stopRun(runId: string): Promise<RunStopResponse> {
