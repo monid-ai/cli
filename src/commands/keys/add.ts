@@ -1,20 +1,38 @@
 import { Command } from '@cliffy/command';
+import { Secret } from '@cliffy/prompt';
 import { validateApiKeyFormat, extractApiKeyPrefix, obfuscateApiKey } from '../../utils/keys.js';
 import { ConfigManager } from '../../config/manager.js';
 import { handleError } from '../../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
 import { success } from '../../output/colors.js';
 
+async function readKeyInteractively(json?: boolean): Promise<string> {
+  if (!process.stdin.isTTY) {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    for await (const chunk of process.stdin) data += chunk;
+    return data;
+  }
+  if (json) {
+    throw new Error('Cannot prompt for the key in --json mode. Pass -k or pipe it on stdin.');
+  }
+  return await Secret.prompt('API key');
+}
+
 export const keysAddCommand = new Command()
   .name('add')
   .description('Add an API key to the local credential store.')
-  .option('-k, --key <key:string>', 'The API key string.', { required: true })
+  .option(
+    '-k, --key <key:string>',
+    'The API key string. Omit to read it from stdin (piped) or a hidden prompt (terminal), keeping it out of shell history and process lists.',
+  )
   .option('-l, --label <label:string>', 'Label for the API key.', {
     required: true,
   })
   .option('-j, --json', 'Output as JSON.')
-  .action(async ({ key, label, json }) => {
+  .action(async ({ key: keyOption, label, json }) => {
     try {
+      const key = (keyOption ?? (await readKeyInteractively(json))).trim();
       const config = new ConfigManager();
 
       // Validate key format
