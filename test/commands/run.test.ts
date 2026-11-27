@@ -136,23 +136,49 @@ describe('monid run: exit code of a sync run', () => {
     }
   });
 
-  it('a --wait timeout names the run and how to resume it, exits 1', async () => {
+  it('a --wait timeout is a pending result, not an error: names the run, how to resume, exits 0', async () => {
     // POST /v1/run and every GET /v1/runs/:id answer RUNNING; -w 1 times out
     // after the first 1 s backoff sleep. (-w 0 is falsy and means "don't wait".)
     const { code, out, err } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '1');
-    expect(code).toBe(1);
-    expect(err).toContain('Polling timed out');
-    expect(err).toContain('Run ID: 01M4Z0C45J63GV8C76P6YJRFTK (status: RUNNING)');
-    expect(err).toContain('monid runs get -r 01M4Z0C45J63GV8C76P6YJRFTK');
+    expect(code).toBe(0);
+    expect(err).not.toContain('monid: error');
+    expect(out).toContain('Status:   RUNNING');
+    expect(out).toContain('Still RUNNING after 1s');
+    expect(out).toContain("monid runs get -r '01M4Z0C45J63GV8C76P6YJRFTK' -w");
     expect(out).not.toContain('Run completed');
   });
 
-  it('a --wait timeout in --json carries runId and status', async () => {
-    const { code, out } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '1', '-j');
-    expect(code).toBe(1);
+  it('a --wait timeout with -o puts the output path in the resume command', async () => {
+    const { code, out } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '1', '-o', '/tmp/monid-pending-out.json');
+    expect(code).toBe(0);
+    expect(out).toContain("monid runs get -r '01M4Z0C45J63GV8C76P6YJRFTK' -w -o '/tmp/monid-pending-out.json'");
+  });
+
+  it('a --wait timeout in --json is a pending envelope with runId, status and resume', async () => {
+    const { code, out, err } = await run(202, { ...completed(200), status: 'RUNNING', providerResponse: undefined }, '-w', '1', '-j');
+    expect(code).toBe(0);
+    expect(err).toBe('');
     const parsed = JSON.parse(out);
-    expect(parsed.error.code).toBe('POLL_TIMEOUT');
-    expect(parsed.error.runId).toBe('01M4Z0C45J63GV8C76P6YJRFTK');
-    expect(parsed.error.status).toBe('RUNNING');
+    expect(parsed.error).toBeUndefined();
+    expect(parsed.pending).toBe(true);
+    expect(parsed.runId).toBe('01M4Z0C45J63GV8C76P6YJRFTK');
+    expect(parsed.status).toBe('RUNNING');
+    expect(parsed.waitedSec).toBe(1);
+    expect(parsed.resume).toBe("monid runs get -r '01M4Z0C45J63GV8C76P6YJRFTK' -w");
+  });
+
+  it('runs get -w that times out is pending too', async () => {
+    reply = { status: 200, body: { ...completed(200), status: 'RUNNING', providerResponse: undefined } };
+    const proc = Bun.spawn([process.execPath, ENTRY, 'runs', 'get', '-r', '01M4Z0C45J63GV8C76P6YJRFTK', '-w', '1', '-j'], {
+      env: { ...process.env, XDG_CONFIG_HOME: configHome(), MONID_API_BASE_URL: `http://localhost:${server.port}` },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const out = await new Response(proc.stdout).text();
+    expect(await proc.exited).toBe(0);
+    const parsed = JSON.parse(out);
+    expect(parsed.pending).toBe(true);
+    expect(parsed.status).toBe('RUNNING');
+    expect(parsed.error).toBeUndefined();
   });
 });

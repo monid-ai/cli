@@ -1,9 +1,9 @@
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../../api/client.js';
 import { ConfigManager } from '../../config/manager.js';
-import { handleError, MonidError, withRunContext } from '../../utils/error.js';
+import { handleError, MonidError } from '../../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../../utils/update-check.js';
-import { formatRunDetail, writeRunOutput, writeRunOutputJson } from '../../output/format.js';
+import { formatRunDetail, writeRunOutput, writeRunOutputJson, pendingRunEnvelope, printPendingRun } from '../../output/format.js';
 import {
   startSpinner,
   succeedSpinner,
@@ -44,6 +44,8 @@ export const runsGetCommand = new Command()
       }
 
       let result: RunDetailResponse;
+      // Set when --wait ran out of time with the run still going.
+      let waitedSec: number | undefined;
 
       if (wait !== undefined) {
         // Poll until done
@@ -54,16 +56,35 @@ export const runsGetCommand = new Command()
           updateSpinner(`Waiting for run ${runId}...`);
         }
 
-        result = await pollUntilDone<RunDetailResponse>(
-          () => api.getRun(id),
-          (r) => isTerminalRunStatus(r.status),
-          timeoutMs,
-        );
+        try {
+          result = await pollUntilDone<RunDetailResponse>(
+            () => api.getRun(id),
+            (r) => isTerminalRunStatus(r.status),
+            timeoutMs,
+          );
+        } catch (err) {
+          if (!(err instanceof PollTimeoutError)) throw err;
+          result = err.lastResult as RunDetailResponse;
+          waitedSec = Math.round(timeoutMs / 1000);
+        }
       } else {
         result = await api.getRun(id);
       }
 
       const updateInfo = await config.getUpdateInfo();
+
+      if (waitedSec !== undefined) {
+        if (json) {
+          const pending = pendingRunEnvelope(result, waitedSec, output);
+          const out = updateInfo ? applyUpdateNote(pending, updateInfo) : pending;
+          console.log(JSON.stringify(out, null, 2));
+        } else {
+          succeedSpinner(`Run still ${result.status}: ${result.runId}`);
+          printPendingRun(result, waitedSec, output);
+          if (updateInfo) printUpdateNotice(updateInfo);
+        }
+        return;
+      }
 
       if (json) {
         const saved = output ? await writeRunOutputJson(result, output) : result;
@@ -92,14 +113,6 @@ export const runsGetCommand = new Command()
       if (!json && updateInfo) printUpdateNotice(updateInfo);
     } catch (err) {
       stopSpinner();
-      // A --wait timeout is not a failure of the run: name it so the user
-      // can keep polling instead of re-running (and paying) it.
-      if (err instanceof PollTimeoutError && runId) {
-        err = withRunContext(err, {
-          runId,
-          status: (err.lastResult as RunDetailResponse).status,
-        });
-      }
       handleError(err, json);
     }
   });

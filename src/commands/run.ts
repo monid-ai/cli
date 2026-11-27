@@ -5,7 +5,7 @@ import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError, withRunContext } from '../utils/error.js';
 import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
-import { formatRunDetail, resolveOutput, writeRunOutput, writeRunOutputJson, formatHints } from '../output/format.js';
+import { formatRunDetail, resolveOutput, writeRunOutput, writeRunOutputJson, formatHints, pendingRunEnvelope, printPendingRun } from '../output/format.js';
 import {
   startSpinner,
   succeedSpinner,
@@ -139,7 +139,9 @@ export const runCommand = new Command()
 
       // Get the final result - either the sync response or poll for it
       let result: RunDetailResponse;
-      
+      // Set when --wait ran out of time with the run still going.
+      let waitedSec: number | undefined;
+
       if (isTerminal) {
         // Already complete - treat runRes as the full detail response
         result = runRes as RunDetailResponse;
@@ -152,15 +154,23 @@ export const runCommand = new Command()
         const timeoutMs =
           typeof wait === 'number' ? wait * 1000 : 300_000;
 
-        result = await pollUntilDone<RunDetailResponse>(
-          async () => {
-            const r = await api.getRun(runRes.runId);
-            createdRun = { runId: runRes.runId, status: r.status };
-            return r;
-          },
-          (r) => isTerminalRunStatus(r.status),
-          timeoutMs,
-        );
+        try {
+          result = await pollUntilDone<RunDetailResponse>(
+            async () => {
+              const r = await api.getRun(runRes.runId);
+              createdRun = { runId: runRes.runId, status: r.status };
+              return r;
+            },
+            (r) => isTerminalRunStatus(r.status),
+            timeoutMs,
+          );
+        } catch (err) {
+          // A healthy run that outlived --wait is pending, not failed: hand
+          // back its last state and how to resume, and exit 0.
+          if (!(err instanceof PollTimeoutError)) throw err;
+          result = err.lastResult as RunDetailResponse;
+          waitedSec = Math.round(timeoutMs / 1000);
+        }
       }
 
       const updateInfo = await config.getUpdateInfo();
@@ -169,6 +179,19 @@ export const runCommand = new Command()
       // provider errors are data, not failures — but it is not a success to
       // show a green check for, and scripts need a non-zero exit code.
       const refused = (result.providerResponse?.httpStatus ?? 0) >= 400;
+
+      if (waitedSec !== undefined) {
+        if (json) {
+          const pending = pendingRunEnvelope(result, waitedSec, output);
+          const out = updateInfo ? applyUpdateNote(pending, updateInfo) : pending;
+          console.log(JSON.stringify(out, null, 2));
+        } else {
+          succeedSpinner(`Run still ${result.status}: ${result.runId}`);
+          printPendingRun(result, waitedSec, output);
+          if (updateInfo) printUpdateNotice(updateInfo);
+        }
+        return;
+      }
 
       if (json) {
         const saved = output ? await writeRunOutputJson(result, output) : result;
@@ -213,11 +236,7 @@ export const runCommand = new Command()
     } catch (err) {
       stopSpinner();
       if (createdRun) {
-        const status =
-          err instanceof PollTimeoutError
-            ? (err.lastResult as RunDetailResponse).status
-            : createdRun.status;
-        err = withRunContext(err, { runId: createdRun.runId, status });
+        err = withRunContext(err, { runId: createdRun.runId, status: createdRun.status });
       }
       handleError(err, json);
     }

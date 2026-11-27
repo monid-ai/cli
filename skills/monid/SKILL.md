@@ -202,7 +202,7 @@ monid run -p apify -e /apidojo/tweet-scraper \
 
 **When to use `--wait`:**
 - Async/background tasks where blocking is acceptable
-- You can set a timeout: `-w 30` (wait max 30 seconds). If the run is not finished by then, the command exits with an error that shows the run ID — the run itself keeps going, so continue with `monid runs get -r <runId>`.
+- You can set a timeout: `-w 30` (wait max 30 seconds). If the run is not finished by then, the command exits 0 with the run's current state (`status` still `RUNNING`; with `--json`, `pending: true`, `waitedSec` and a `resume` command) — the run itself keeps going, so save the run ID and continue with `monid runs get -r <runId> -w`. Do not run it again: that would start and pay for a second run. `runs get -w` behaves the same way.
 - Be aware: runs can take 1-120 seconds, so this may block the conversation or hit runtime timeouts
 
 ---
@@ -409,7 +409,7 @@ When a run is `BLOCKED`, the response includes a `controls` array of the snapsho
 
 **When to use `--wait`:**
 - **Async/background tasks** where blocking is acceptable (e.g., scheduled jobs, non-interactive scripts)
-- **Set a timeout** if needed: `-w 30` waits up to 30 seconds. If the run is not finished by then, the command exits with an error (`Polling timed out after 30s`) that includes the run ID — the run keeps going, so continue with `monid runs get -r <runId>`.
+- **Set a timeout** if needed: `-w 30` waits up to 30 seconds. If the run is not finished by then, the command exits 0 with a pending result: the run ID, `status: RUNNING` and, with `--json`, `pending: true` plus a `resume` command. The run keeps going — **save the run ID before anything else** and continue with `monid runs get -r <runId> -w -o <file>`; never re-run it, or you pay twice. Check `status` (not the exit code) to know whether results exist; with `-o`, no file is written until the run is terminal.
 - **Be aware:** Runs can take 1-120 seconds. Using `--wait` without a timeout can block the conversation or hit agent runtime limits.
 
 **Saving output:**
@@ -540,7 +540,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **"Network request failed …"** — The connection dropped. Reads (`discover`, `inspect`, `runs get`) were already retried, so try again shortly. For `monid run`, the run may or may not have been created: **check `monid runs list` before running again** so the user is not charged twice.
 
-**"Polling timed out after Ns"** — `--wait` ran out of time; the run is still going. The error shows the run ID; continue with `monid runs get -r <runId>`.
+**`--wait` ran out of time** (`pending: true` with `--json`; human output says `Still RUNNING after Ns`) — not an error: the run is still going and the exit code is 0. Continue with the printed `monid runs get -r <runId> -w` (add `-o <file>` to save). Do not re-run the command.
 
 **"Endpoint not found" on Windows Git Bash** — Git Bash rewrites paths like `-e /web/scrape/markdown` into `C:/Program Files/Git/web/scrape/markdown`. Prefix the command so the variable reaches the `monid` process: `MSYS_NO_PATHCONV=1 monid run -p … -e /web/scrape/markdown …` (or `export MSYS_NO_PATHCONV=1` once per shell).
 
