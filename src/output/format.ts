@@ -428,6 +428,43 @@ export async function writeRunOutputJson<T extends Pick<RunDetailResponse, 'prov
   }
 }
 
+/** Shell-quote one argument for the resume hints. */
+function shellQuote(arg: string): string {
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/** The command that picks a still-running run up again (and saves it, with -o). */
+export function resumeCommand(runId: string, output?: string): string {
+  return `monid runs get -r ${shellQuote(runId)} -w${output ? ` -o ${shellQuote(output)}` : ''}`;
+}
+
+/**
+ * What `--wait` prints when its time ran out while the run is still going:
+ * the last run detail the poll saw, marked `pending`, with the command that
+ * resumes it. The run is healthy, so this is not an error.
+ */
+export function pendingRunEnvelope<T extends { runId: string }>(
+  lastResult: T,
+  waitedSec: number,
+  output?: string,
+): T & { pending: true; waitedSec: number; resume: string } {
+  return { ...lastResult, pending: true, waitedSec, resume: resumeCommand(lastResult.runId, output) };
+}
+
+/** Human-mode text for a wait that expired with the run still going. */
+export function printPendingRun(
+  data: RunDetailResponse,
+  waitedSec: number,
+  output?: string,
+): void {
+  formatRunDetail(data);
+  console.log();
+  console.log(
+    `Still ${data.status} after ${waitedSec}s; the run keeps going. Do not run it again: that would start (and pay for) a second one.`,
+  );
+  console.log(`Save the run ID, then collect the result with: ${resumeCommand(data.runId, output)}`);
+}
+
 export function formatRunDetail(data: RunDetailResponse): void {
   console.log();
   console.log(chalk.bold('Run Details'));
