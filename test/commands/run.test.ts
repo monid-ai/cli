@@ -156,3 +156,13 @@ describe('monid run: exit code of a sync run', () => {
     expect(parsed.error.status).toBe('RUNNING');
   });
 });
+
+describe('monid run -f: input file encoding', () => {
+  it('accepts a body file that starts with a UTF-8 BOM', async () => {
+    const path = join(mkdtempSync(join(tmpdir(), 'monid-input-')), 'in.json');
+    writeFileSync(path, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('{"email":"a@b.co"}')]));
+    const { code, err } = await run(200, completed(200), '-f', path);
+    expect(err).not.toContain('input file');
+    expect(code).toBe(0);
+  });
+});

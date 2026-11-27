@@ -1,9 +1,9 @@
-import { readFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { Command } from '@cliffy/command';
 import { MonidAPI } from '../api/client.js';
 import { ConfigManager } from '../config/manager.js';
 import { handleError, MonidError, withRunContext } from '../utils/error.js';
+import { readJsonInputFile } from '../utils/input-file.js';
 import { printUpdateNotice, applyUpdateNote } from '../utils/update-check.js';
 import { formatRunDetail, resolveOutput, writeRunOutput, writeRunOutputJson, formatHints } from '../output/format.js';
 import {
@@ -63,12 +63,7 @@ export const runCommand = new Command()
           throw new Error('Invalid JSON input. Use -i \'{"key": "value"}\' format.');
         }
       } else if (inputFile) {
-        try {
-          const fileContent = readFileSync(inputFile, 'utf-8');
-          bodyData = JSON.parse(fileContent);
-        } catch {
-          throw new Error(`Failed to read or parse input file: ${inputFile}`);
-        }
+        bodyData = readJsonInputFile(inputFile);
       }
 
       // Parse query params
