@@ -538,7 +538,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 **Run status BLOCKED** — A workspace control stopped the run before it executed: not enough wallet balance, a budget, or a run cap. Inspect the `controls` array in `monid runs get -r <runId>` to see which control triggered. Retrying as-is will block again until it is resolved — for the wallet, `monid topup -a <amount>` (at least the top-up minimum, currently $5) prints an `Open to pay` link for the user, or, if the key can't create one, a dashboard wallet link to send them to instead; rerun only once the user has paid. For a budget or run cap, the user can raise it on the dashboard (https://app.monid.ai), or wait for a budget window to reset.
 
-**"Network request failed …"** — The connection dropped. Reads (`discover`, `inspect`, `runs get`) were already retried, so try again shortly. For `monid run`, the run may or may not have been created: **check `monid runs list` before running again** so the user is not charged twice.
+**"Network request failed …"** — The connection dropped. Reads (`discover`, `inspect`, `runs get`) were already retried, so try again shortly. For `monid run`, the run may or may not have been created: **check `monid runs list` before running again** so the user is not charged twice. A request that gets no complete response within 60 seconds fails this way too (`no complete response within 60s`) instead of hanging; `--wait` also bounds each status request by the time it has left.
 
 **"Polling timed out after Ns"** — `--wait` ran out of time; the run is still going. The error shows the run ID; continue with `monid runs get -r <runId>`.
 

@@ -156,7 +156,7 @@ describe('run output before returning', () => {
 
     await cli.parse(['run', '-p', 'apify', '-e', '/tweets', '-w', '-o', outputPath, '--json']);
 
-    expect(getRun).toHaveBeenCalledWith('run-a');
+    expect(getRun).toHaveBeenCalledWith('run-a', { deadline: expect.any(Number) });
     expect(JSON.parse(readFileSync(outputPath, 'utf-8'))).toEqual({ items: [5] });
     expect(JSON.parse(stdout()).status).toBe('COMPLETED');
   });

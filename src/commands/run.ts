@@ -152,11 +152,28 @@ export const runCommand = new Command()
         const timeoutMs =
           typeof wait === 'number' ? wait * 1000 : 300_000;
 
+        // --wait bounds the whole command: a status request that stalls must
+        // not outlive it, so each one gets only the time that is left.
+        const deadline = Date.now() + timeoutMs;
+        let last = runRes as RunDetailResponse;
+
         result = await pollUntilDone<RunDetailResponse>(
           async () => {
-            const r = await api.getRun(runRes.runId);
-            createdRun = { runId: runRes.runId, status: r.status };
-            return r;
+            try {
+              const r = await api.getRun(runRes.runId, { deadline });
+              last = r;
+              createdRun = { runId: runRes.runId, status: r.status };
+              return r;
+            } catch (err) {
+              if (
+                err instanceof MonidError &&
+                err.code === 'NETWORK_ERROR' &&
+                Date.now() >= deadline
+              ) {
+                throw new PollTimeoutError(timeoutMs, last);
+              }
+              throw err;
+            }
           },
           (r) => isTerminalRunStatus(r.status),
           timeoutMs,
