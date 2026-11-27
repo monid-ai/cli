@@ -66,6 +66,8 @@ monid keys add -k <their-api-key> -l main
 
 Alternatively, provide the command above for them to run themselves.
 
+To keep the key out of shell history and process lists, leave `-k` off: `monid keys add -l main` reads the key from stdin when piped, or from a hidden prompt in a terminal. To use a key without storing it anywhere (hosted agents, CI, project-local setups), set the `MONID_API_KEY` environment variable instead — the CLI uses it ahead of any stored key.
+
 4. Verify the key is configured:
 
 ```bash
@@ -347,10 +349,13 @@ To control costs:
 
 ```bash
 monid keys add -k <api-key> -l <label>     # Add a key (first key is auto-activated)
+monid keys add -l <label>                    # Same, reading the key from stdin or a hidden prompt
 monid keys list                              # Show all configured keys
 monid keys activate -l <label>               # Switch the active key
 monid keys remove -l <label>                 # Remove a key (use -f to skip confirmation)
 ```
+
+`MONID_API_KEY=<api-key>` in the environment authenticates every command without a stored key and takes precedence over the active stored key; an empty value is ignored. `monid keys list` shows only stored keys.
 
 API key format: `monid_<stage>_<secret>` (e.g. `monid_live_abc123...`). Generate keys at https://app.monid.ai/access/api-keys.
 
@@ -526,7 +531,7 @@ monid dispute -r 01HXYZ... -r 01HXZA... \
 
 ## Troubleshooting
 
-**"No active API key"** — No key configured. Run `monid keys add -k <key> -l main`.
+**"No active API key"** — No key configured. Run `monid keys add -k <key> -l main`, or set `MONID_API_KEY`.
 
 **402 / Insufficient balance on the command** — the wallet can't cover the run's estimated cost. The message names the shortfall. If it ends with `Or run: monid topup -a <AMOUNT>`, run that with an amount that covers the shortfall and is at least the top-up minimum, and hand the user the `Open to pay` link; otherwise send the user to the dashboard wallet page the message links. Run again only after the user has paid.
 

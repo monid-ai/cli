@@ -2,9 +2,14 @@ import Conf from 'conf';
 import yaml from 'yaml';
 import { VERSION, UPDATE_CHECK_INTERVAL_MS } from './constants.js';
 import { resolveConfigDir } from './paths.js';
+import { MonidError } from '../utils/error.js';
+import { validateApiKeyFormat, extractApiKeyPrefix } from '../utils/keys.js';
 import { fetchLatestVersion, isNewerVersion } from '../utils/update-check.js';
 import type { UpdateInfo } from '../utils/update-check.js';
 import type { ConfigSchema, CredentialsSchema, CredentialKey } from './types.js';
+
+/** Environment variable that supplies the API key without the credential store. */
+export const API_KEY_ENV_VAR = 'MONID_API_KEY';
 
 export class ConfigManager {
   private config: Conf<ConfigSchema>;
@@ -65,7 +70,29 @@ export class ConfigManager {
 
   // --- Key management ---
 
+  /**
+   * The key commands authenticate with. `MONID_API_KEY`, when set and
+   * non-empty, wins over the credential store, so an injected key works
+   * with no config files; otherwise the stored active key.
+   */
   getActiveKey(): { label: string; credential: CredentialKey } | undefined {
+    const fromEnv = process.env[API_KEY_ENV_VAR]?.trim();
+    if (fromEnv) {
+      if (!validateApiKeyFormat(fromEnv)) {
+        throw new MonidError(
+          'AUTH_FAILED',
+          `${API_KEY_ENV_VAR} is set but is not a valid API key. Expected: monid_<stage>_<secret>`,
+        );
+      }
+      return {
+        label: API_KEY_ENV_VAR,
+        credential: {
+          key: fromEnv,
+          prefix: extractApiKeyPrefix(fromEnv),
+          added_at: '',
+        },
+      };
+    }
     const label = this.getActiveKeyLabel();
     if (!label) return undefined;
     const credential = this.getKey(label);
